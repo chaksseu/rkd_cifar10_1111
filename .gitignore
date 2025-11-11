@@ -13,9 +13,12 @@ logs/
 *.npz
 *.png
 *.jpg
+*.safetensors
+*.json
 
 # 기타 개발 환경/캐시
 __pycache__/
 .ipynb_checkpoints/
 .DS_Store
 .env
+nohup.out
