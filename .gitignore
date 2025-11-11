@@ -1,0 +1,21 @@
+# 폴더 전체
+wandb/
+cifar10_png_linear_only/
+data/
+ddpm_cifar10_rgb/
+checkpoints/
+logs/
+
+# 파일 확장자
+*.pt
+*.pth
+*.ckpt
+*.npz
+*.png
+*.jpg
+
+# 기타 개발 환경/캐시
+__pycache__/
+.ipynb_checkpoints/
+.DS_Store
+.env
