@@ -576,16 +576,16 @@ def train(args):
 def build_argparser():
     p = argparse.ArgumentParser(description="Accelerate-based unconditional DDPM training + DDIM sampling (W&B logging + local saves + FID overall & per-class)")
     # data / io
-    p.add_argument("--train_dir", type=str, default="./cifar10_png_linear_only/gray3/train", help="Folder with images (recursively reads *.png/*.jpg)")
-    p.add_argument("--test_dir",  type=str, default="./cifar10_png_linear_only/gray3/test",  help="Folder with class subdirs containing PNGs (used for FID)")
-    p.add_argument("--output_dir", type=str, default="./ddpm_cifar10_gray3_accel", help="Where to save checkpoints & final model")
+    p.add_argument("--train_dir", type=str, default="./cifar10_png_linear_only/rgb/train", help="Folder with images (recursively reads *.png/*.jpg)")
+    p.add_argument("--test_dir",  type=str, default="./cifar10_png_linear_only/rgb/test",  help="Folder with class subdirs containing PNGs (used for FID)")
+    p.add_argument("--output_dir", type=str, default="./ddpm_cifar10_rgb_accel", help="Where to save checkpoints & final model")
     # logging
     p.add_argument("--project", type=str, default="ddpm-cifar10-1112", help="W&B project name")
-    p.add_argument("--run_name", type=str, default="gray3-linear-ddpm-accel-ddim", help="W&B run name")
+    p.add_argument("--run_name", type=str, default="rgb-linear-ddpm-accel-ddim", help="W&B run name")
     p.add_argument("--wandb_offline", action="store_true", help="Use W&B offline mode (WANDB_MODE=offline)")
     # train
     p.add_argument("--epochs", type=int, default=500)
-    p.add_argument("--batch_size", type=int, default=128)
+    p.add_argument("--batch_size", type=int, default=256)
     p.add_argument("--num_workers", type=int, default=4)
     p.add_argument("--grad_accum", type=int, default=1, help="Gradient accumulation steps")
     p.add_argument("--lr", type=float, default=1e-4)
@@ -599,17 +599,17 @@ def build_argparser():
     p.add_argument("--model_channels", type=int, nargs="+", default=[128, 256, 256],
                    help="UNet block_out_channels, e.g. --model_channels 128 256 256")
     # DDIM sampling
-    p.add_argument("--sample_steps", type=int, default=4, help="DDIM sampling steps (typ. 25~100)")
+    p.add_argument("--sample_steps", type=int, default=100, help="DDIM sampling steps (typ. 25~100)")
     p.add_argument("--sample_eta", type=float, default=0.0, help="DDIM eta (0.0 = deterministic)")
-    p.add_argument("--sample_interval", type=int, default=5, help="Log samples every N optimizer steps (0 = never)")
+    p.add_argument("--sample_interval", type=int, default=5000, help="Log samples every N optimizer steps (0 = never)")
     p.add_argument("--sample_n", type=int, default=64, help="How many images to sample for previews (make it a square number)")
-    p.add_argument("--save_interval", type=int, default=5, help="Save checkpoint every N optimizer steps (0 = never)")
+    p.add_argument("--save_interval", type=int, default=5000, help="Save checkpoint every N optimizer steps (0 = never)")
     p.add_argument("--sample_on_epoch_end", action="store_true")
     p.add_argument("--log_interval", type=int, default=1)
     p.add_argument("--seed", type=int, default=42)
     # FID
     p.add_argument("--disable_fid", action="store_true", help="Disable FID computation/logging")
-    p.add_argument("--fid_batch_size", type=int, default=128, help="Batch size for Inception during FID")
+    p.add_argument("--fid_batch_size", type=int, default=64, help="Batch size for Inception during FID")
     p.add_argument("--fid_gen_batch", type=int, default=512, help="Batch size for generating samples for FID")
     p.add_argument("--fid_dims", type=int, default=2048, help="Inception feature dims (default 2048)")
     p.add_argument("--fid_keep_gen", action="store_true", help="Keep generated images used for FID on disk")
