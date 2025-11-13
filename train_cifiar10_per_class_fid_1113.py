@@ -578,10 +578,10 @@ def build_argparser():
     # data / io
     p.add_argument("--train_dir", type=str, default="./cifar10_png_linear_only/rgb/train", help="Folder with images (recursively reads *.png/*.jpg)")
     p.add_argument("--test_dir",  type=str, default="./cifar10_png_linear_only/rgb/test",  help="Folder with class subdirs containing PNGs (used for FID)")
-    p.add_argument("--output_dir", type=str, default="./ddpm_cifar10_rgb_accel", help="Where to save checkpoints & final model")
+    p.add_argument("--output_dir", type=str, default="./ddpm_cifar10_rgb", help="Where to save checkpoints & final model")
     # logging
     p.add_argument("--project", type=str, default="ddpm-cifar10-1112", help="W&B project name")
-    p.add_argument("--run_name", type=str, default="rgb-linear-ddpm-accel-ddim", help="W&B run name")
+    p.add_argument("--run_name", type=str, default="rgb-linear-ddpm-b256-lr1e4", help="W&B run name")
     p.add_argument("--wandb_offline", action="store_true", help="Use W&B offline mode (WANDB_MODE=offline)")
     # train
     p.add_argument("--epochs", type=int, default=500)
