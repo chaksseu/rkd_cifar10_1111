@@ -8,7 +8,7 @@ Additionally, computes FID (pytorch-fid) on sampling steps against a test set.
 - Per-class FID (each test subdirectory vs same generated set)
 
 Example:
-  accelerate launch --mixed_precision bf16 --num_processes 2 train_ddpm_accel_ddim.py \
+  accelerate launch --mixed_precision fp16 --num_processes 2 train_ddpm_accel_ddim.py \
     --train_dir ./cifar10_png_linear_only/rgb/train \
     --test_dir  ./cifar10_png_linear_only/rgb/test \
     --output_dir ./ddpm_cifar10_rgb_accel \
@@ -293,6 +293,7 @@ def train(args):
         log_with=["wandb"],
         kwargs_handlers=[ddp_kwargs],
         project_dir=args.output_dir,
+        mixed_precision="fp16",  # or "bf16"
     )
     set_seed(args.seed)
 
