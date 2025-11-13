@@ -21,6 +21,10 @@ Example:
 """
 
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"   # <= 이 줄 추가 (GPU 0만 보이게)
+
+
+import os
 import math
 import argparse
 import shutil
@@ -580,7 +584,7 @@ def build_argparser():
     p.add_argument("--run_name", type=str, default="gray3-linear-ddpm-accel-ddim", help="W&B run name")
     p.add_argument("--wandb_offline", action="store_true", help="Use W&B offline mode (WANDB_MODE=offline)")
     # train
-    p.add_argument("--epochs", type=int, default=50)
+    p.add_argument("--epochs", type=int, default=500)
     p.add_argument("--batch_size", type=int, default=128)
     p.add_argument("--num_workers", type=int, default=4)
     p.add_argument("--grad_accum", type=int, default=1, help="Gradient accumulation steps")
