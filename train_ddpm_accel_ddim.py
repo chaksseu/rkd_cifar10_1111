@@ -3,10 +3,12 @@
 """
 Train an unconditional DDPM with Hugging Face Accelerate (multi-GPU ready),
 and SAMPLE with DDIM. Logs losses & sample grids to Weights & Biases + always save local PNGs.
+Additionally, computes FID (pytorch-fid) on sampling steps against a test set.
 
 Example:
   accelerate launch --mixed_precision bf16 --num_processes 2 train_ddpm_accel_ddim.py \
     --train_dir ./cifar10_png_linear_only/rgb/train \
+    --test_dir  ./cifar10_png_linear_only/rgb/test \
     --output_dir ./ddpm_cifar10_rgb_accel \
     --project ddpm-cifar10-rgb \
     --run_name rgb-linear-ddpm-accel-ddim \
@@ -19,6 +21,7 @@ Example:
 import os
 import math
 import argparse
+import shutil
 from pathlib import Path
 from typing import List, Optional
 
@@ -53,6 +56,43 @@ def to_grid(images: torch.Tensor, nrow: int = 4) -> Image.Image:
     grid = (grid * 255.0).clamp(0, 255).byte().permute(1, 2, 0).cpu().numpy()
     return Image.fromarray(grid)
 
+def collect_image_paths_recursive(root: Path, exts={".png", ".jpg", ".jpeg"}) -> List[Path]:
+    return [p for p in root.rglob("*") if p.suffix.lower() in exts and p.is_file()]
+
+def ensure_dir(p: Path):
+    p.mkdir(parents=True, exist_ok=True)
+
+def flatten_real_cache(test_dir: Path, cache_dir: Path, accelerator: Accelerator) -> int:
+    """Flattens (symlink or copy) all images under test_dir into cache_dir for pytorch-fid."""
+    ensure_dir(cache_dir)
+    # If already populated, reuse
+    existing = list(cache_dir.glob("*"))
+    if len(existing) > 0:
+        return len(existing)
+
+    paths = collect_image_paths_recursive(test_dir)
+    accelerator.print(f"[FID] Flattening test set ({len(paths)} imgs) to {cache_dir} ...")
+    for i, src in enumerate(paths, 1):
+        dst = cache_dir / f"real_{i:06d}{src.suffix.lower()}"
+        try:
+            # Prefer symlink to save disk
+            os.symlink(src.resolve(), dst)
+        except Exception:
+            shutil.copy2(src, dst)
+    return len(paths)
+
+def save_tensor_batch_to_dir(x: torch.Tensor, out_dir: Path, start_idx: int):
+    """
+    x: [-1,1] (N,3,H,W)
+    Save as PNG 8-bit.
+    """
+    ensure_dir(out_dir)
+    x01 = (x.clamp(-1, 1) + 1) / 2.0
+    x255 = (x01 * 255.0).clamp(0, 255).byte().cpu()
+    for i in range(x255.shape[0]):
+        arr = x255[i].permute(1, 2, 0).numpy()
+        img = Image.fromarray(arr)
+        img.save(out_dir / f"gen_{start_idx + i:06d}.png")
 
 # ------------------------- Dataset -------------------------
 
@@ -122,6 +162,84 @@ def sample_images_ddim(
     return x
 
 
+# ------------------------- FID -------------------------
+
+def compute_and_log_fid(
+    accelerator: Accelerator,
+    unwrapped_model: UNet2DModel,
+    ddim_scheduler: DDIMScheduler,
+    args,
+    device: torch.device,
+    global_step: int,
+    real_cache_dir: Path,
+    num_test_imgs: int,
+):
+    """
+    Generate num_test_imgs samples into a temp dir, compute FID with pytorch-fid,
+    then log to W&B. Only called on main process.
+    """
+    if args.disable_fid:
+        return
+
+    try:
+        from pytorch_fid.fid_score import calculate_fid_given_paths
+    except Exception as e:
+        accelerator.print(f"[FID] pytorch-fid not available: {e}. Skipping FID.")
+        return
+
+    gen_dir = Path(args.output_dir) / "fid" / f"step{global_step:06d}"
+    if gen_dir.exists():
+        shutil.rmtree(gen_dir)
+    ensure_dir(gen_dir)
+
+    accelerator.print(f"[FID] Generating {num_test_imgs} samples to {gen_dir} ...")
+    gen = torch.Generator(device=device)
+    # Variation across steps while remaining deterministic given (seed, step)
+    gen.manual_seed(int(args.seed) + int(global_step))
+
+    remaining = num_test_imgs
+    cursor = 0
+    while remaining > 0:
+        cur = min(args.fid_gen_batch, remaining)
+        with torch.no_grad():
+            autocast_device = "cuda" if device.type == "cuda" else "cpu"
+            with torch.autocast(autocast_device, enabled=(accelerator.mixed_precision is not None)):
+                xs = sample_images_ddim(
+                    unwrapped_model,
+                    ddim_scheduler,
+                    num_images=cur,
+                    image_size=args.image_size,
+                    device=device,
+                    steps=args.sample_steps,
+                    eta=args.sample_eta,
+                    generator=gen,
+                )
+        save_tensor_batch_to_dir(xs, gen_dir, start_idx=cursor)
+        cursor += cur
+        remaining -= cur
+
+    accelerator.print(f"[FID] Computing FID against {real_cache_dir} ...")
+    fid = calculate_fid_given_paths(
+        [real_cache_dir.as_posix(), gen_dir.as_posix()],
+        batch_size=args.fid_batch_size,
+        device=device,
+        dims=args.fid_dims,
+    )
+    accelerator.print(f"[FID] step={global_step} FID={fid:.4f}")
+
+    try:
+        accelerator.log({
+            "metrics/fid": float(fid),
+            "metrics/fid_num_images": int(num_test_imgs),
+        }, step=global_step)
+    except Exception:
+        pass
+
+    if not args.fid_keep_gen:
+        # Clean generated images to save disk
+        shutil.rmtree(gen_dir, ignore_errors=True)
+
+
 # ------------------------- Training -------------------------
 
 def train(args):
@@ -167,6 +285,26 @@ def train(args):
     steps_per_epoch = math.ceil(len(dataset) / (args.batch_size * max(1, accelerator.num_processes) * max(1, args.grad_accum)))
     accelerator.print(f"[Info] Found {len(dataset)} training images under {args.train_dir}")
     accelerator.print(f"[Info] steps_per_epoch (optimizer steps) ≈ {steps_per_epoch}")
+
+    # FID real cache (main only)
+    num_test_imgs = 0
+    fid_real_cache_dir = Path(args.output_dir) / "fid" / "real_cache"
+    if accelerator.is_main_process and (not args.disable_fid):
+        if args.test_dir is None or len(args.test_dir.strip()) == 0:
+            accelerator.print("[FID] --test_dir is empty; disabling FID.")
+            args.disable_fid = True
+        else:
+            test_dir = Path(args.test_dir)
+            if not test_dir.exists():
+                accelerator.print(f"[FID] test_dir {test_dir} does not exist; disabling FID.")
+                args.disable_fid = True
+            else:
+                num_test_imgs = flatten_real_cache(test_dir, fid_real_cache_dir, accelerator)
+                accelerator.print(f"[FID] Real cache ready: {num_test_imgs} images.")
+
+    accelerator.wait_for_everyone()
+    # broadcast num_test_imgs to other ranks (for logs)
+    num_test_imgs = accelerator.gather_for_metrics(torch.tensor([num_test_imgs], device=device)).max().item()
 
     # Model
     model = UNet2DModel(
@@ -239,10 +377,11 @@ def train(args):
                         "train/lr": float(lr_scheduler.get_last_lr()[0]),
                         "train/epoch": epoch,
                         "train/step": global_step,
+                        "data/test_num_images": int(num_test_imgs),
                     }, step=global_step)
                     accelerator.print(f"[Epoch {epoch:03d}] step={global_step:06d} loss={loss_detached:.4f} lr={lr_scheduler.get_last_lr()[0]:.2e}")
 
-                # -------- Sampling (DDIM) --------
+                # -------- Sampling (DDIM) + FID --------
                 if (args.sample_interval > 0) and (global_step % args.sample_interval == 0):
                     accelerator.wait_for_everyone()
                     if accelerator.is_main_process:
@@ -257,7 +396,7 @@ def train(args):
                                 )
                                 grid = to_grid(imgs, nrow=int(math.isqrt(args.sample_n)))
 
-                        # ✅ 항상 로컬 저장
+                        # ✅ 항상 로컬 저장 (preview grid)
                         out_path = Path(args.output_dir) / f"samples_step{global_step:06d}.png"
                         out_path.parent.mkdir(parents=True, exist_ok=True)
                         grid.save(out_path)
@@ -268,6 +407,19 @@ def train(args):
                             accelerator.log({"samples_ddim": wandb.Image(grid)}, step=global_step)
                         except Exception:
                             pass
+
+                        # ---- FID ----
+                        if not args.disable_fid and num_test_imgs > 0:
+                            compute_and_log_fid(
+                                accelerator=accelerator,
+                                unwrapped_model=unwrapped,
+                                ddim_scheduler=ddim_scheduler,
+                                args=args,
+                                device=device,
+                                global_step=global_step,
+                                real_cache_dir=fid_real_cache_dir,
+                                num_test_imgs=int(num_test_imgs),
+                            )
                     accelerator.wait_for_everyone()
 
                 # -------- Checkpointing --------
@@ -351,20 +503,21 @@ def train(args):
         final_dir.mkdir(parents=True, exist_ok=True)
         unwrapped.save_pretrained(final_dir.as_posix())
         noise_scheduler.save_pretrained(final_dir.as_posix())
-        accelerator.print(f("[Done] Saved model to {final_dir}"))
+        accelerator.print(f"[Done] Saved model to {final_dir}")
     accelerator.wait_for_everyone()
 
     accelerator.end_training()
 
 
 def build_argparser():
-    p = argparse.ArgumentParser(description="Accelerate-based unconditional DDPM training + DDIM sampling (W&B logging + local saves)")
+    p = argparse.ArgumentParser(description="Accelerate-based unconditional DDPM training + DDIM sampling (W&B logging + local saves + FID)")
     # data / io
-    p.add_argument("--train_dir", type=str, default="./cifar10_png_linear_only/gray3/train", help="Folder with images (recursively reads *.png/*.jpg)")
-    p.add_argument("--output_dir", type=str, default="./ddpm_cifar10_gray3_accel", help="Where to save checkpoints & final model")
+    p.add_argument("--train_dir", type=str, default="./cifar10_png_linear_only/rgb/train", help="Folder with images (recursively reads *.png/*.jpg)")
+    p.add_argument("--test_dir",  type=str, default="./cifar10_png_linear_only/rgb/test",  help="Folder with class subdirs containing PNGs (used for FID)")
+    p.add_argument("--output_dir", type=str, default="./ddpm_cifar10_rgb_accel", help="Where to save checkpoints & final model")
     # logging
-    p.add_argument("--project", type=str, default="ddpm-cifar10", help="W&B project name")
-    p.add_argument("--run_name", type=str, default="gray3-linear-ddpm-accel-ddim", help="W&B run name")
+    p.add_argument("--project", type=str, default="ddpm-cifar10-1112", help="W&B project name")
+    p.add_argument("--run_name", type=str, default="rgb-linear-ddpm-accel-ddim", help="W&B run name")
     p.add_argument("--wandb_offline", action="store_true", help="Use W&B offline mode (WANDB_MODE=offline)")
     # train
     p.add_argument("--epochs", type=int, default=50)
@@ -384,12 +537,18 @@ def build_argparser():
     # DDIM sampling
     p.add_argument("--sample_steps", type=int, default=100, help="DDIM sampling steps (typ. 25~100)")
     p.add_argument("--sample_eta", type=float, default=0.0, help="DDIM eta (0.0 = deterministic)")
-    p.add_argument("--sample_interval", type=int, default=2000, help="Log samples every N optimizer steps (0 = never)")
+    p.add_argument("--sample_interval", type=int, default=5000, help="Log samples every N optimizer steps (0 = never)")
     p.add_argument("--sample_n", type=int, default=64, help="How many images to sample for previews (make it a square number)")
-    p.add_argument("--save_interval", type=int, default=2000, help="Save checkpoint every N optimizer steps (0 = never)")
+    p.add_argument("--save_interval", type=int, default=5000, help="Save checkpoint every N optimizer steps (0 = never)")
     p.add_argument("--sample_on_epoch_end", action="store_true")
     p.add_argument("--log_interval", type=int, default=100)
     p.add_argument("--seed", type=int, default=42)
+    # FID
+    p.add_argument("--disable_fid", action="store_true", help="Disable FID computation/logging")
+    p.add_argument("--fid_batch_size", type=int, default=128, help="Batch size for Inception during FID")
+    p.add_argument("--fid_gen_batch", type=int, default=1024, help="Batch size for generating samples for FID")
+    p.add_argument("--fid_dims", type=int, default=2048, help="Inception feature dims (default 2048)")
+    p.add_argument("--fid_keep_gen", action="store_true", help="Keep generated images used for FID on disk")
     return p
 
 
