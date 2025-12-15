@@ -508,16 +508,16 @@ def train(args):
 
     accelerator.end_training()
 
-
+TT=1000
 def build_argparser():
     p = argparse.ArgumentParser(description="Accelerate-based unconditional DDPM training + DDIM sampling (W&B logging + local saves + FID)")
     # data / io
-    p.add_argument("--train_dir", type=str, default="./cifar10_png_linear_only/gray3/train", help="Folder with images (recursively reads *.png/*.jpg)")
-    p.add_argument("--test_dir",  type=str, default="./cifar10_png_linear_only/gray3/test",  help="Folder with class subdirs containing PNGs (used for FID)")
-    p.add_argument("--output_dir", type=str, default="./ddpm_cifar10_gray3_accel", help="Where to save checkpoints & final model")
+    p.add_argument("--train_dir", type=str, default="./cifar10_png_linear_only/rgb/train", help="Folder with images (recursively reads *.png/*.jpg)")
+    p.add_argument("--test_dir",  type=str, default="./cifar10_png_linear_only/rgb/test",  help="Folder with class subdirs containing PNGs (used for FID)")
+    p.add_argument("--output_dir", type=str, default=f"./ddpm_cifar10_rgb_accel_T{TT}", help="Where to save checkpoints & final model")
     # logging
-    p.add_argument("--project", type=str, default="ddpm-cifar10-1112", help="W&B project name")
-    p.add_argument("--run_name", type=str, default="gray3-linear-ddpm-accel-ddim", help="W&B run name")
+    p.add_argument("--project", type=str, default="ddpm-cifar10-1214", help="W&B project name")
+    p.add_argument("--run_name", type=str, default=f"rgb-linear-ddpm-accel-ddim-T{TT}", help="W&B run name")
     p.add_argument("--wandb_offline", action="store_true", help="Use W&B offline mode (WANDB_MODE=offline)")
     # train
     p.add_argument("--epochs", type=int, default=50)
@@ -530,7 +530,7 @@ def build_argparser():
     p.add_argument("--image_size", type=int, default=32)
     p.add_argument("--center_crop", action="store_true")
     p.add_argument("--no_hflip", action="store_true")
-    p.add_argument("--train_timesteps", type=int, default=1000)
+    p.add_argument("--train_timesteps", type=int, default=TT)
     p.add_argument("--beta_schedule", type=str, default="linear", choices=["linear", "scaled_linear", "squaredcos_cap_v2"])
     p.add_argument("--model_channels", type=int, nargs="+", default=[128, 256, 256],
                    help="UNet block_out_channels, e.g. --model_channels 128 256 256")
