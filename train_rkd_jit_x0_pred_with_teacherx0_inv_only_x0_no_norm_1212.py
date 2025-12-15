@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-
-
 import json, math, random
 from pathlib import Path
 from typing import Dict, Tuple
@@ -13,21 +11,28 @@ import wandb
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
 
 from diffusers import DDPMScheduler, DDIMScheduler, DDIMInverseScheduler
 from torch.utils.data import Dataset, DataLoader
-import itertools
+
 # ===================== CONFIG ===================== #
+
+# W_RKD = 0.1
+# W_INV = 0.1
+# W_INVINV = 0.1
+# W_FID = 0.1
+# W_SAME = 0.1
 
 W_RKD = 0.1
 W_INV = 0.1
 W_INVINV = 1.0
-W_FID = 0.0001
-CUDA_NUM = 2
+W_FID = 0.1
+W_SAME = 0.01
+
+CUDA_NUM = 3
 BATCH_SIZE = 1024
 
-WANDB_NAME=f"1214_lr1e4_n32_b{BATCH_SIZE}_ddim_50_150_steps_no_init_rkdW{W_RKD}_invW{W_INV}_invinvW{W_INVINV}_fidW{W_FID}"
+WANDB_NAME=f"1212_lr1e4_n32_b{BATCH_SIZE}_T100_ddim_30_50_steps_no_init_rkdW{W_RKD}_invW{W_INV}_invinvW{W_INVINV}_fidW{W_FID}_sameW{W_SAME}_x0_pred_rkd_with_teacher_x0_inv_only_x0_no_norm_jit"
 
 
 CONFIG = {
@@ -35,20 +40,24 @@ CONFIG = {
     "device": f"cuda:{CUDA_NUM}",
     "out_dir": f"runs/{WANDB_NAME}",
     # teacher / student
-    "teacher_ckpt": "ckpt_teacher_T1000_step370000_1021.pt", 
-    "student_init_ckpt": "",                     
+    "teacher_ckpt": f"ckpt_teacher_B1024_N65536_T100_step1000000.pt", 
+    "student_init_ckpt": "runs/1204_lr1e4_n32_b1024_T100_ddim_30_50_steps_no_init_rkdW0.08_invW0.0_invinvW0.0_fidW0.0_sameW0.0_x0_pred_rkd_with_teacher_x0_inv_only_x0/ckpt_student_step130000.pt",                     
     # "student_init_ckpt": "runs/1025_lr1e4_n32_b1024_ddim_50_150_steps_no_init_rkdW0.0_invW0.0_invinv_W1.0_diffW0.1/ckpt_student_step200000.pt",                     
     "resume_student_ckpt": f"",        
-    "teacher_data_stats": "smile_data_n8192_scale10_rot0_trans_0_0/teacher_normalization_stats.json",
+    "teacher_data_stats": "smile_data_n65536_scale10_rot0_trans_0_0/normalization_stats.json",
     "student_data_stats": "smile_data_n32_scale2_rot60_trans_50_-20/normalization_stats.json",
+
 
     # diffusion loss 가중치
     "W_RKD": W_RKD,
     "W_INV": W_INV,                               # ε-pred MSE 가중치
     "W_INVINV": W_INVINV,                               # ε-pred MSE 가중치
     "W_FID": W_FID,                               # ε-pred MSE 가중치
+    "W_SAME": W_SAME,
+    "same_mode": "mean",   # 또는 "last" 로 바꿔가며 실험
 
-    "rkd_ddim_steps_to_t": 100,   # t_sel까지 최대 몇 번의 DDIM 전이만 사용할지
+
+    "rkd_ddim_steps_to_t": 40,   # t_sel까지 최대 몇 번의 DDIM 전이만 사용할지
 
     "batch_size": BATCH_SIZE,
     "num_noises": 8192, 
@@ -58,7 +67,7 @@ CONFIG = {
     "regen_noise_pool": False,      # True면 항상 새로 만듦
     
     # schedule / time
-    "T": 1000,                 # total diffusion steps (timesteps = 0..T-1)
+    "T": 100,                 # total diffusion steps (timesteps = 0..T-1)
 
     "seed": 42,
     # RKD weights
@@ -78,7 +87,7 @@ CONFIG = {
     "ddim_eta": 0.0,
     # wandb
     "use_wandb": True,
-    "wandb_project": "RKD-DKDM-AICA-1214",
+    "wandb_project": "RKD-DKDM-AICA-1212-NO-NORM-JIT",
     "wandb_run_name": WANDB_NAME,
 }
 
@@ -91,11 +100,6 @@ CONFIG.update({
 })
 
 # ===================== UTILS ===================== #
-import re
-
-from pathlib import Path
-
-
 
 def _mean_and_cov(X: torch.Tensor, eps: float = 1e-6):
     # X: [N, D] -> (mu[D], C[D,D])
@@ -169,6 +173,17 @@ def make_ddim_like(train_sched, device, T: int):
     ddim.set_timesteps(T, device=device)  # [T-1, ..., 0]
     return ddim
 
+def make_ddim_like_sample(train_sched, device, T: int):
+    """
+    train_sched.config(베타/타임스텝 등)를 복사해 DDIM 스케줄러 생성.
+    timesteps = [T-1, ..., 0] 로 설정.
+    """
+    ddim_sample = DDIMScheduler.from_config(train_sched.config)
+    ddim_sample.config.clip_sample = False
+    ddim_sample.config.prediction_type = "sample"
+    ddim_sample.set_timesteps(T, device=device)  # [T-1, ..., 0]
+    return ddim_sample
+
 def sample_noise_batch(noise_pool: np.ndarray, B: int, device: torch.device) -> torch.Tensor:
     """노이즈 풀에서 인덱스 랜덤 샘플로 배치 구성"""
     N = noise_pool.shape[0]
@@ -206,46 +221,6 @@ def load_norm_stats_torch(json_path: str, device: str = 'cpu'):
     
     return mu_tensor, sigma_tensor
 
-def save_and_log_xt_pairs_for_all_t(
-    left_seq: np.ndarray,   # [K,B,2] Teacher
-    right_seq: np.ndarray,  # [K,B,2] Student
-    ts: np.ndarray,         # [K]     정수 timestep들 (T-1→...→0)
-    noise_ids: np.ndarray,  # [B]     색상 매핑용
-    out_dir: Path,
-    step_i: int,
-    sync_axes: bool = False,
-    dot_size: int = 6,
-    use_wandb: bool = False,
-):
-    base = out_dir / "figs" / f"xt_pairs_step{step_i:06d}"
-    base.mkdir(parents=True, exist_ok=True)
-
-    logged = {}
-    for k, t in enumerate(ts):
-        left_xy  = left_seq[k]   # (B,2)
-        right_xy = right_seq[k]  # (B,2)
-        path = base / f"t{int(t):03d}.png"
-
-        plot_pair_scatter_colored(
-            left_xy=left_xy,
-            right_xy=right_xy,
-            noise_ids=noise_ids,
-            N_total=len(noise_ids),
-            left_title = fr"Teacher $x_t$ (t={int(t)})",
-            right_title= fr"Student $x_t$ (t={int(t)})",
-            out_path=path,
-            dot_size=dot_size,
-            sync_axes=sync_axes,
-        )
-
-        if use_wandb:
-            logged[f"img/xt_pairs/t{int(t):03d}"] = wandb.Image(str(path))
-
-    if use_wandb and logged:
-        wandb.log(logged, step=step_i)
-
-    return base  # 저장된 폴더 경로
-
 
 def _square_limits_from(data: np.ndarray, pad_ratio: float = 0.05):
     """
@@ -274,25 +249,69 @@ def _square_limits_from(data: np.ndarray, pad_ratio: float = 0.05):
     return (xmid - half, xmid + half), (ymid - half, ymid + half)
 
 
-def colors_from_noise_ids(ids: np.ndarray, N_total: int, alpha: float = 0.85):
+def colors_from_position(pos: np.ndarray, alpha: float = 0.85):
     """
-    같은 'global noise id'에는 항상 같은 색이 나오도록 결정적 매핑.
-    - hue = (id * φ) mod 1.0  (φ ≈ 0.618…)
-    - colormap: hsv (연속)
+    입력된 위치 pos (shape: [B, 2])를 기준으로 색상을 결정합니다.
+    Teacher의 최종 결과(x0)를 넣으면, 그 분포상에서
+    좌상단(x 작고 y 큼) -> 우하단(x 크고 y 작음) 대각선 방향으로 그라데이션을 줍니다.
     """
-    ids = np.asarray(ids, dtype=np.int64)
-    phi = 0.6180339887498949
-    hues = (ids * phi) % 1.0
-    cmap = plt.get_cmap("hsv")
-    cols = cmap(hues)
-    cols[:, 3] = alpha  # alpha
+    pos = np.asarray(pos)
+    x = pos[:, 0]
+    y = pos[:, 1]
+    
+    # 점수 계산: x - y
+    # 좌상단: x(Min) - y(Max) = 값이 가장 작음 (파란/보라 계열)
+    # 우하단: x(Max) - y(Min) = 값이 가장 큼 (빨간 계열)
+    scores = x - y
+    
+    # Min-Max Normalization
+    s_min, s_max = scores.min(), scores.max()
+    if s_max - s_min < 1e-6:
+        norm = np.zeros_like(scores)
+    else:
+        norm = (scores - s_min) / (s_max - s_min)
+        
+    cmap = plt.get_cmap("turbo")
+    cols = cmap(norm)
+    cols[:, 3] = alpha
+    return cols
+
+
+
+def colors_from_init_pos(z: np.ndarray, alpha: float = 0.85):
+    """
+    초기 위치 z (shape: [B, 2])를 기준으로 색상을 결정합니다.
+    좌상단(x 작고 y 큼) -> 우하단(x 크고 y 작음) 방향으로 
+    Rainbow 그라데이션을 적용합니다.
+    """
+    z = np.asarray(z)
+    x = z[:, 0]
+    y = z[:, 1]
+    
+    # 점수 계산: (x - y)
+    # 좌상단: x는 작고(-), y는 큼(+) -> 값이 가장 작음
+    # 우하단: x는 크고(+), y는 작음(-) -> 값이 가장 큼
+    scores = x - y
+    
+    # 0~1 사이로 Min-Max Normalization
+    s_min, s_max = scores.min(), scores.max()
+    if s_max - s_min < 1e-6:
+        norm = np.zeros_like(scores)
+    else:
+        norm = (scores - s_min) / (s_max - s_min)
+        
+    # Colormap 적용 (turbo: 보라-파랑-초록-노랑-빨강 순)
+    cmap = plt.get_cmap("turbo")
+    cols = cmap(norm)
+    
+    # 투명도 적용
+    cols[:, 3] = alpha
     return cols
 
 def plot_pair_scatter_colored(
     left_xy: np.ndarray,
     right_xy: np.ndarray,
-    noise_ids: np.ndarray,
-    N_total: int,
+    colors: np.ndarray,   # [수정] noise_ids 대신 색상 배열을 직접 받음
     left_title: str,
     right_title: str,
     out_path: Path,
@@ -301,20 +320,20 @@ def plot_pair_scatter_colored(
     pad_ratio: float = 0.05,
 ):
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    A = np.asarray(left_xy); B = np.asarray(right_xy)
-    assert A.shape == B.shape and A.shape[1] == 2, "Expect (B,2) arrays for both panels."
-
-    colors = colors_from_noise_ids(np.asarray(noise_ids), N_total)
-
+    A = np.asarray(left_xy)
+    B = np.asarray(right_xy)
+    
     fig, axes = plt.subplots(1, 2, figsize=(7.2, 3.4),
                              sharex=sync_axes, sharey=sync_axes)
 
-    # 공통 정사각형 축 범위 (sync_axes=True)
+    # 공통 축 범위 계산
     if sync_axes:
         both = np.vstack([A, B])
         xlim_all, ylim_all = _square_limits_from(both, pad_ratio=pad_ratio)
 
+    # 그리기
     for ax, data, title in ((axes[0], A, left_title), (axes[1], B, right_title)):
+        # 전달받은 colors를 그대로 사용 (순서가 유지되므로 각 점에 맞는 색이 칠해짐)
         ax.scatter(data[:, 0], data[:, 1], s=dot_size, c=colors, edgecolors="none")
         ax.set_aspect("equal", adjustable="box")
         ax.set_title(title)
@@ -329,6 +348,44 @@ def plot_pair_scatter_colored(
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
+def save_and_log_xt_pairs_for_all_t(
+    left_seq: np.ndarray,   # [K,B,2] Teacher
+    right_seq: np.ndarray,  # [K,B,2] Student
+    ts: np.ndarray,         # [K]
+    colors: np.ndarray,     # [수정] colors 인자 추가
+    out_dir: Path,
+    step_i: int,
+    sync_axes: bool = False,
+    dot_size: int = 6,
+    use_wandb: bool = False,
+):
+    base = out_dir / "figs" / f"xt_pairs_step{step_i:06d}"
+    base.mkdir(parents=True, exist_ok=True)
+
+    logged = {}
+    for k, t in enumerate(ts):
+        left_xy  = left_seq[k]
+        right_xy = right_seq[k]
+        path = base / f"t{int(t):03d}.png"
+
+        plot_pair_scatter_colored(
+            left_xy=left_xy,
+            right_xy=right_xy,
+            colors=colors,        # 계산된 색상 전달
+            left_title=fr"Teacher $x_t$ (t={int(t)})",
+            right_title=fr"Student $x_t$ (t={int(t)})",
+            out_path=path,
+            dot_size=dot_size,
+            sync_axes=sync_axes,
+        )
+
+        if use_wandb:
+            logged[f"img/xt_pairs/t{int(t):03d}"] = wandb.Image(str(path))
+
+    if use_wandb and logged:
+        wandb.log(logged, step=step_i)
+
+    return base
 
 
 
@@ -402,8 +459,9 @@ def sample_ddim_student(
         eps = model(x_in, t_b)
         out = local.step(model_output=eps, timestep=t, sample=x, eta=eta)
         x = out.prev_sample
+        pred_x0 = out.pred_original_sample
 
-        xs.append(x) 
+        xs.append(pred_x0) 
 
         if t_int <= t_sel:
             break
@@ -431,8 +489,9 @@ def sample_ddim_teacher(
         eps = model(x_in, t_b)
         out = local.step(model_output=eps, timestep=t, sample=x, eta=eta)
         x = out.prev_sample
+        pred_x0 = out.pred_original_sample
 
-        xs.append(x) 
+        xs.append(pred_x0) 
 
         if t_int <= t_sel:
             break
@@ -459,8 +518,9 @@ def sample_ddim_teacher_grad(
         eps = model(x_in, t_b)
         out = local.step(model_output=eps, timestep=t, sample=x, eta=eta)
         x = out.prev_sample
+        pred_x0 = out.pred_original_sample
 
-        xs.append(x) 
+        xs.append(pred_x0) 
 
         if t_int <= t_sel:
             break
@@ -487,9 +547,11 @@ def sample_ddim_inv_student(
     for t in inv.timesteps:
         t_b = torch.full((x.shape[0],), int(t), device=device, dtype=torch.long)
         latent_in = inv.scale_model_input(x, t)
-        eps = model(latent_in, t_b)
-        x = inv.step(eps, t, x).prev_sample
-        xs.append(x) 
+        pred_x0 = model(latent_in, t_b)
+        out = inv.step(pred_x0, t, x)
+        x = out.prev_sample
+        pred_x0 = out.pred_original_sample
+        xs.append(pred_x0) 
 
     return xs  
 
@@ -525,16 +587,13 @@ class MLPDenoiser(nn.Module):
 
 def build_schedulers(num_train_timesteps: int):
     train_sched = DDPMScheduler(
+        beta_schedule="linear",
         num_train_timesteps=num_train_timesteps,
         clip_sample=False,
     )
     train_sched.config.prediction_type = "epsilon"
 
-    sample_sched = DDIMScheduler.from_config(train_sched.config)
-    sample_sched.config.clip_sample = False
-    sample_sched.config.prediction_type = "epsilon"  # DDIM도 동일하게
-
-    return train_sched, sample_sched
+    return train_sched
 
 
 def denormalize_np(arr: np.ndarray, mu: np.ndarray, sigma: np.ndarray):
@@ -653,8 +712,9 @@ def train_student_uniform_xt(cfg: Dict):
     device = torch.device(cfg["device"] if torch.cuda.is_available() else "cpu")
 
     # 스케줄러/모델
-    train_sched, sample_sched = build_schedulers(cfg["T"])
+    train_sched = build_schedulers(cfg["T"])
     ddim = make_ddim_like(train_sched, device, cfg["T"])
+    ddim_x0_sample = make_ddim_like_sample(train_sched, device, cfg["T"])
 
     teacher = MLPDenoiser(2, cfg["teacher_time_dim"], cfg["teacher_hidden"], cfg["teacher_depth"], 2).to(device)
     teacher.load_state_dict(torch.load(cfg["teacher_ckpt"], map_location=device), strict=True)
@@ -738,8 +798,8 @@ def train_student_uniform_xt(cfg: Dict):
         # possible_steps = [200, 195, 191, 190, 187, 174, 161, 157, 148, 135]
         # ddim_steps = random.choice(possible_steps)
 
-        ddim_steps = int(np.random.randint(50,151))
-
+        ddim_steps = int(np.random.randint(30,51))
+        # ddim_steps = 151
 
         with torch.no_grad():
             xt_T_seq = sample_ddim_teacher(
@@ -750,19 +810,18 @@ def train_student_uniform_xt(cfg: Dict):
 
         student.train()
         xt_S_seq = sample_ddim_student(
-            model=student, sample_scheduler=ddim, z=z, 
+            model=student, sample_scheduler=ddim_x0_sample, z=z, 
             device=device, sample_steps=ddim_steps,
             eta=float(cfg.get("ddim_eta", 0.0)), t_sel=t_sel,
         )
 
 
+        ##################  STUDENT DOMAIN DATA ##################
         x0_batch = next_student_batch()  # shape (B_s, 2)
         student.train()
 
-        # ===================== STUDENT DOMAIN DATA =====================
-        # 학생 도메인 x0 배치 가져오기 (정규화 완료 상태)        
         S_inv_z_seq = sample_ddim_inv_student(
-            model=student, sample_scheduler=ddim, x0=x0_batch, 
+            model=student, sample_scheduler=ddim_x0_sample, x0=x0_batch, 
             device=device, sample_steps=ddim_steps,
             eta=float(cfg.get("ddim_eta", 0.0)),
         )
@@ -772,75 +831,135 @@ def train_student_uniform_xt(cfg: Dict):
             eta=float(cfg.get("ddim_eta", 0.0)), t_sel=0,
         )
 
-        ##################  RKD LOSSES ##################
+       ##################  RKD LOSSES ##################
 
         rkd_loss = torch.tensor(0.0, device=device)
         inversion_loss = torch.tensor(0.0, device=device)
         invinv_loss = torch.tensor(0.0, device=device)
         fid_loss = torch.tensor(0.0, device=device)
-        
+        x0_S_same_loss = torch.tensor(0.0, device=device)
 
-        for i, (xt_S, xt_T, xt_S_inv, xt_T_inv) in enumerate(zip(xt_S_seq, xt_T_seq, reversed(S_inv_z_seq[:-1]), x0_inv_T)):
+        rkd_s_d_list, rkd_t_d_list = [], []
 
+        xt_T_x0 = xt_T_seq[-1]
 
-            xt_S = denormalize_torch(xt_S, mu_student_tensor, sigma_student_tensor)
-            xt_T = denormalize_torch(xt_T, mu_teacher_tensor, sigma_teacher_tensor)
-            xt_S_inv = denormalize_torch(xt_S_inv, mu_student_tensor, sigma_student_tensor)
-            xt_T_inv = denormalize_torch(xt_T_inv, mu_teacher_tensor, sigma_teacher_tensor)
+        # NORM VERSION
+        # xt_S_seq_denorm = [denormalize_torch(x, mu_student_tensor, sigma_student_tensor) for x in xt_S_seq]
+        # xt_T_x0_denorm = denormalize_torch(xt_T_x0, mu_teacher_tensor, sigma_teacher_tensor)
+        # x0_batch_denorm = denormalize_torch(x0_batch, mu_student_tensor, sigma_student_tensor)
+        # x0_inv_T_denorm = denormalize_torch(x0_inv_T[-1], mu_teacher_tensor, sigma_teacher_tensor)
 
-            # RKD
-            rkd_s_d = torch.pdist(xt_S, p=2).clamp_min(1e-12)           
-            rkd_t_d = torch.pdist(xt_T, p=2).clamp_min(1e-12)  
-            # INV
-            s_full = torch.cdist(xt_S, xt_S_inv, p=2)  
-            t_full = torch.cdist(xt_T, xt_T_inv, p=2)  
-            inv_s_d = s_full.reshape(-1).clamp_min(1e-12)            
+        # NO NORM VERSION
+        xt_S_seq_denorm = xt_S_seq
+        xt_T_x0_denorm = xt_T_x0
+        x0_batch_denorm = x0_batch
+        x0_inv_T_denorm = x0_inv_T[-1]
+
+        # --- RKD (전 타임스텝) ---  (W_RKD != 0일 때만 계산)
+        if cfg["W_RKD"] != 0:
+            for xt_S in xt_S_seq_denorm:
+                rkd_s_d = torch.pdist(xt_S, p=2).clamp_min(1e-12)
+                rkd_t_d = torch.pdist(xt_T_x0_denorm, p=2).clamp_min(1e-12)
+                rkd_s_d_list.append(rkd_s_d)
+                rkd_t_d_list.append(rkd_t_d)
+
+        # --- INV: x_t^S vs x_0^S / x_0^{T,inv} --- (W_INV != 0일 때만)
+        inv_s_d = inv_t_d = None
+        if cfg["W_INV"] != 0:
+            s_full = torch.cdist(xt_S_seq_denorm[-1], x0_batch_denorm, p=2)
+            t_full = torch.cdist(xt_T_x0_denorm, x0_inv_T_denorm, p=2)
+            inv_s_d = s_full.reshape(-1).clamp_min(1e-12)
             inv_t_d = t_full.reshape(-1).clamp_min(1e-12)
-            # INVINV
-            invinv_s_d = torch.pdist(xt_S_inv, p=2).clamp_min(1e-12)           
-            invinv_t_d = torch.pdist(xt_T_inv, p=2).clamp_min(1e-12)  
+        # --- INVINV: x_0^S vs x_0^{T,inv} --- (W_INVINV != 0일 때만)
+        invinv_s_d = invinv_t_d = None
+        if cfg["W_INVINV"] != 0:
+            invinv_s_d = torch.pdist(x0_batch_denorm, p=2).clamp_min(1e-12)
+            invinv_t_d = torch.pdist(x0_inv_T_denorm, p=2).clamp_min(1e-12)
 
-            # mean normalization 
-            # teacher mean
-            teacher_sum = rkd_t_d.sum() + inv_t_d.sum() + invinv_t_d.sum()
-            teacher_cnt = rkd_t_d.numel() + inv_t_d.numel() + invinv_t_d.numel()
-            teacher_mean = teacher_sum / teacher_cnt  
-            # student mean
-            student_sum = rkd_s_d.sum() + inv_s_d.sum() + invinv_s_d.sum()
-            student_cnt = rkd_s_d.numel() + inv_s_d.numel() + invinv_s_d.numel()
-            student_mean = student_sum / student_cnt  
+        # --- mean normalization (글로벌: 활성화된 loss들만) ---
+        student_parts = []
+        teacher_parts = []
 
-            rkd_s_d = rkd_s_d / student_mean
-            rkd_t_d = rkd_t_d / teacher_mean
+        if cfg["W_RKD"] != 0 and len(rkd_s_d_list) > 0:
+            rkd_s_d_all = torch.cat(rkd_s_d_list, dim=0)
+            rkd_t_d_all = torch.cat(rkd_t_d_list, dim=0)
+            student_parts.append(rkd_s_d_all)
+            teacher_parts.append(rkd_t_d_all)
+        if cfg["W_INV"] != 0 and inv_s_d is not None:
+            student_parts.append(inv_s_d)
+            teacher_parts.append(inv_t_d)
+        if cfg["W_INVINV"] != 0 and invinv_s_d is not None:
+            student_parts.append(invinv_s_d)
+            teacher_parts.append(invinv_t_d)
+            
+        if len(student_parts) > 0:
+            student_all = torch.cat(student_parts, dim=0)
+            teacher_all = torch.cat(teacher_parts, dim=0)
+            student_mean = student_all.mean()
+            teacher_mean = teacher_all.mean()
+        else:
+            student_mean = torch.tensor(1.0, device=device)
+            teacher_mean = torch.tensor(1.0, device=device)
+
+        # --- 실제 사용하는 애들만 정규화 ---
+        if cfg["W_RKD"] != 0:
+            rkd_s_d_list = [d / student_mean for d in rkd_s_d_list]
+            rkd_t_d_list = [d / teacher_mean for d in rkd_t_d_list]
+        if cfg["W_INV"] != 0 and inv_s_d is not None:
             inv_s_d = inv_s_d / student_mean
             inv_t_d = inv_t_d / teacher_mean
+        if cfg["W_INVINV"] != 0 and invinv_s_d is not None:
             invinv_s_d = invinv_s_d / student_mean
             invinv_t_d = invinv_t_d / teacher_mean
 
-            # FID
-            fid_student = fid_gaussian_torch(xt_S, xt_S_inv)
-            fid_teacher = fid_gaussian_torch(xt_T, xt_T_inv) 
+        # --- FID  ---
+        if cfg["W_FID"] != 0:
+            fid_student = fid_gaussian_torch(xt_S_seq_denorm[-1], x0_batch_denorm)
+            fid_teacher = fid_gaussian_torch(xt_T_x0_denorm, x0_inv_T_denorm)
+        else:
+            fid_student = torch.tensor(0.0, device=device)
+            fid_teacher = torch.tensor(0.0, device=device)
 
-            # loss
-            rkd_loss += cfg["W_RKD"] * F.mse_loss(rkd_s_d, rkd_t_d, reduction="mean") / len(xt_S_seq)
-            inversion_loss += cfg["W_INV"] * F.mse_loss(inv_s_d, inv_t_d, reduction="mean") / len(xt_S_seq)
-            invinv_loss += cfg["W_INVINV"] * F.mse_loss(invinv_s_d, invinv_t_d, reduction="mean") / len(xt_S_seq)
-            fid_loss += cfg["W_FID"] * (fid_student + fid_teacher) / len(xt_S_seq)
+        # --- SAME (trajectory 수축 regularizer) ---
+        if cfg["W_SAME"] != 0:
+            xt_S_stack = torch.stack(xt_S_seq_denorm, dim=0)   # [K, B, D]
+            K = xt_S_stack.size(0)
+            if cfg.get("same_mode", "mean") == "mean":
+                # (1) mean 기준: 모든 timestep이 서로 가깝게
+                xt_S_time_mean = xt_S_stack.mean(dim=0, keepdim=True)
+                xt_S_time_mean_expand = xt_S_time_mean.expand_as(xt_S_stack)
 
+                same_raw = F.mse_loss(
+                    xt_S_stack,              # [K, B, D]
+                    xt_S_time_mean_expand,   # [K, B, D]
+                    reduction="mean",
+                )
+                x0_S_same_loss = cfg["W_SAME"] * same_raw
+            elif cfg["same_mode"] == "last":
+                # (2) last 기준: 마지막 pred_x0이 anchor
+                ref = xt_S_stack[-1].detach()
+                xt_S_except_last = xt_S_stack[:-1]
+                ref_expand = ref.unsqueeze(0).expand_as(xt_S_except_last)
 
+                same_raw = F.mse_loss(
+                    xt_S_except_last,   # [K-1, B, D]
+                    ref_expand,         # [K-1, B, D]
+                    reduction="mean",
+                )
+                x0_S_same_loss = cfg["W_SAME"] * same_raw
 
-        # # ===================== NEW: diffusion ε-MSE loss =====================
-        # t_b_s = torch.randint(low=0, high=T, size=(x0_batch.shape[0],), device=device, dtype=torch.long)
-        # eps = torch.randn_like(x0_batch)    
-        # x_t_for_diff = train_sched.add_noise(x0_batch, eps, t_b_s)  # q(x_t|x0, ε, t)
-        # eps_pred = student(x_t_for_diff, t_b_s)  # prediction_type='epsilon'
-
-        # diff_loss += cfg["W_DIFF"] * F.mse_loss(eps_pred, eps, reduction="mean")
-        # # ===============================
-
-
-        ################## TOTAL LOSS ##################
-        loss = rkd_loss + inversion_loss + invinv_loss + fid_loss
+        # losses
+        if cfg["W_RKD"] != 0:
+            for (rkd_s_d, rkd_t_d) in zip(rkd_s_d_list, rkd_t_d_list):
+                rkd_loss += cfg["W_RKD"] * F.mse_loss(rkd_s_d, rkd_t_d, reduction="mean") / len(xt_S_seq)
+        if cfg["W_INV"] != 0 and inv_s_d is not None:
+            inversion_loss += cfg["W_INV"] * F.mse_loss(inv_s_d, inv_t_d, reduction="mean")
+        if cfg["W_INVINV"] != 0 and invinv_s_d is not None:
+            invinv_loss += cfg["W_INVINV"] * F.mse_loss(invinv_s_d, invinv_t_d, reduction="mean")
+        if cfg["W_FID"] != 0:
+            fid_loss += cfg["W_FID"] * (fid_student + fid_teacher)
+        # TOTAL
+        loss = rkd_loss + inversion_loss + invinv_loss + fid_loss + x0_S_same_loss
 
 
         opt.zero_grad()
@@ -850,8 +969,8 @@ def train_student_uniform_xt(cfg: Dict):
         opt.step()
 
         # if (step_i % max(1, total_steps // 20) == 0) or (step_i == 1):
-        if (step_i % 5 == 0) or (step_i == 1):
-            print(f"[step {step_i:06d}] rkd={rkd_loss.item():.6f}  inv={inversion_loss.item():.6f}   invinv={invinv_loss.item():.6f}  fid_loss={fid_loss.item():.6f}  total={loss.item():.6f}")
+        if (step_i % 100 == 0) or (step_i == 1):
+            print(f"[step {step_i:06d}] rkd={rkd_loss.item():.6f}  x0_S_same={x0_S_same_loss.item():.6f}  inv={inversion_loss.item():.6f}   invinv={invinv_loss.item():.6f}  fid_T_loss={fid_teacher.item():.6f}  fid_S_loss={fid_student.item():.6f}  fid_loss={fid_loss.item():.6f}  total={loss.item():.6f}")
 
 
         if cfg["use_wandb"]:
@@ -860,6 +979,7 @@ def train_student_uniform_xt(cfg: Dict):
                 "t": t_sel,
                 "loss/total": float(loss),
                 "loss/rkd": float(rkd_loss),
+                "loss/same": float(x0_S_same_loss),
                 "loss/inv": float(inversion_loss),
                 "loss/invinv": float(invinv_loss),
                 "loss/fid": float(fid_loss),
@@ -870,26 +990,84 @@ def train_student_uniform_xt(cfg: Dict):
         if cfg["use_wandb"]:
             wandb.log({
                 "loss_raw/rkd": float(rkd_loss) / cfg["W_RKD"] if cfg["W_RKD"] != 0 else 0.0,
+                "loss_raw/same": float(x0_S_same_loss) / cfg["W_SAME"] if cfg["W_SAME"] != 0 else 0.0,
                 "loss_raw/inv": float(inversion_loss) / cfg["W_INV"] if cfg["W_INV"] != 0 else 0.0,
                 "loss_raw/invinv": float(invinv_loss) / cfg["W_INVINV"] if cfg["W_INVINV"] != 0 else 0.0,
                 "loss_raw/fid": float(fid_loss) / cfg["W_FID"] if cfg["W_FID"] != 0 else 0.0,
             }, step=step_i)
 
-        # 7) (옵션) 시각화: 그대로 유지 (원 코드와 동일)
+
+        # # 7) (옵션) 시각화 부분 수정
+        # if (step_i % cfg["vis_interval_epochs"] == 0) or (step_i == total_steps):
+        #     with torch.no_grad():
+        #         B_plot = min(int(cfg.get("n_vis", 1024)), B)
+        #         z_vis  = sample_noise_batch(noise_pool, B_plot, device)
+                
+        #         # [NEW] 초기 노이즈 위치(z_vis)를 기반으로 고정된 색상 생성
+        #         # z_vis는 CPU numpy로 변환해서 색상 계산에 사용
+        #         z_vis_np = z_vis.detach().cpu().numpy()
+        #         vis_colors = colors_from_init_pos(z_vis_np, alpha=0.95)
+
+        #         seq_T, ts = collect_xt_seq_ddim(teacher, ddim, z_vis, t_stop=0, return_ts=True, device=device, sample_steps=int(cfg["rkd_ddim_steps_to_t"]))
+        #         seq_S, _  = collect_xt_seq_ddim(student.eval(), ddim_x0_sample, z_vis, t_stop=0, return_ts=True, device=device, sample_steps=int(cfg["rkd_ddim_steps_to_t"]))
+
+        #         stride = 1
+        #         idxs = np.arange(0, len(ts), stride)
+        #         seq_T_s = seq_T[idxs]
+        #         seq_S_s = seq_S[idxs]
+        #         ts_s    = ts[idxs]
+
+        #         seq_T_s_plot = denormalize_np(seq_T_s, mu_teacher, sigma_teacher)
+        #         seq_S_s_plot = denormalize_np(seq_S_s, mu_student, sigma_student)
+                
+        #         _ = save_and_log_xt_pairs_for_all_t(
+        #             left_seq   = seq_T_s_plot,
+        #             right_seq  = seq_S_s_plot,
+        #             ts         = ts_s,
+        #             colors     = vis_colors,   # [NEW] 생성한 색상 전달 (noise_ids 대신)
+        #             out_dir    = out_dir,
+        #             step_i     = step_i,
+        #             sync_axes  = bool(cfg.get("vis_xt_sync_axes", False)),
+        #             dot_size   = 6,
+        #             use_wandb  = bool(cfg["use_wandb"]),
+        #         )
+
+
+        # 7) 시각화: Teacher의 x0 결과에 따라 색을 입혀서 Trajectory 비교
         if (step_i % cfg["vis_interval_epochs"] == 0) or (step_i == total_steps):
             with torch.no_grad():
                 B_plot = min(int(cfg.get("n_vis", 1024)), B)
                 z_vis  = sample_noise_batch(noise_pool, B_plot, device)
+                
+                # [STEP 1] Teacher 모델 먼저 실행하여 경로 수집
+                seq_T, ts = collect_xt_seq_ddim(
+                    teacher, ddim, z_vis, 
+                    t_stop=0, return_ts=True, device=device, 
+                    sample_steps=int(cfg["rkd_ddim_steps_to_t"])
+                )
+                
+                # [STEP 2] Teacher의 최종 결과(x0)를 기준으로 색상 계산
+                # seq_T[-1]은 Teacher가 생성한 x0입니다.
+                # 이를 실제 데이터 스케일로 역정규화(denormalize)한 뒤 색상을 정합니다.
+                teacher_final_x0 = seq_T[-1] 
+                teacher_final_x0_denorm = denormalize_np(teacher_final_x0, mu_teacher, sigma_teacher)
+                
+                # 여기서 구한 vis_colors는 z_vis의 배치 인덱스와 1:1 대응됩니다.
+                vis_colors = colors_from_position(teacher_final_x0_denorm, alpha=0.95)
 
-                seq_T, ts = collect_xt_seq_ddim(teacher, ddim, z_vis, t_stop=0, return_ts=True, device=device, sample_steps=int(cfg["rkd_ddim_steps_to_t"]))
-                seq_S, _  = collect_xt_seq_ddim(student.eval(), ddim, z_vis, t_stop=0, return_ts=True, device=device, sample_steps=int(cfg["rkd_ddim_steps_to_t"]))
+                # [STEP 3] Student 모델 실행 (Teacher와 동일한 z_vis 사용)
+                seq_S, _  = collect_xt_seq_ddim(
+                    student.eval(), ddim_x0_sample, z_vis, 
+                    t_stop=0, return_ts=True, device=device, 
+                    sample_steps=int(cfg["rkd_ddim_steps_to_t"])
+                )
 
+                # [STEP 4] 플롯 그리기 (색상은 Teacher 기준인 vis_colors 사용)
                 stride = 1
                 idxs = np.arange(0, len(ts), stride)
                 seq_T_s = seq_T[idxs]
                 seq_S_s = seq_S[idxs]
                 ts_s    = ts[idxs]
-
 
                 seq_T_s_plot = denormalize_np(seq_T_s, mu_teacher, sigma_teacher)
                 seq_S_s_plot = denormalize_np(seq_S_s, mu_student, sigma_student)
@@ -898,7 +1076,7 @@ def train_student_uniform_xt(cfg: Dict):
                     left_seq   = seq_T_s_plot,
                     right_seq  = seq_S_s_plot,
                     ts         = ts_s,
-                    noise_ids  = np.arange(B_plot),
+                    colors     = vis_colors,   # Teacher x0 기준으로 만든 색상 전달
                     out_dir    = out_dir,
                     step_i     = step_i,
                     sync_axes  = bool(cfg.get("vis_xt_sync_axes", False)),
@@ -927,7 +1105,7 @@ def train_student_uniform_xt(cfg: Dict):
             B_plot = 8192
             x0_s = sample_x0_ddim(
                 model=student,
-                sample_scheduler=ddim,
+                sample_scheduler=ddim_x0_sample,
                 num_samples=B_plot,
                 device=device,
                 sample_steps=int(cfg.get("rkd_ddim_steps_to_t", 100)),

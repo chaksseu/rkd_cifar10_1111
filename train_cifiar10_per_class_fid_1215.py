@@ -21,7 +21,7 @@ Example:
 """
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"   # <= 이 줄 추가 (GPU 0만 보이게)
+# os.environ["CUDA_VISIBLE_DEVICES"] = "7"   # <= 이 줄 추가 (GPU 0만 보이게)
 
 
 import os
@@ -573,14 +573,15 @@ def train(args):
     accelerator.end_training()
 
 TT=100
+DDIM_STEPS=50
 def build_argparser():
     p = argparse.ArgumentParser(description="Accelerate-based unconditional DDPM training + DDIM sampling (W&B logging + local saves + FID overall & per-class)")
     # data / io
     p.add_argument("--train_dir", type=str, default="./cifar10_png_linear_only/rgb/train", help="Folder with images (recursively reads *.png/*.jpg)")
     p.add_argument("--test_dir",  type=str, default="./cifar10_png_linear_only/rgb/test",  help="Folder with class subdirs containing PNGs (used for FID)")
-    p.add_argument("--output_dir", type=str, default="./ddpm_cifar10_rgb", help="Where to save checkpoints & final model")
+    p.add_argument("--output_dir", type=str, default=f"./ddpm_cifar10_rgb_T{TT}_DDIM{DDIM_STEPS}", help="Where to save checkpoints & final model")
     # logging
-    p.add_argument("--project", type=str, default="ddpm-cifar10-1112", help="W&B project name")
+    p.add_argument("--project", type=str, default="ddpm-cifar10-1215", help="W&B project name")
     p.add_argument("--run_name", type=str, default="rgb-linear-ddpm-b256-lr1e4", help="W&B run name")
     p.add_argument("--wandb_offline", action="store_true", help="Use W&B offline mode (WANDB_MODE=offline)")
     # train
@@ -594,12 +595,12 @@ def build_argparser():
     p.add_argument("--image_size", type=int, default=32)
     p.add_argument("--center_crop", action="store_true")
     p.add_argument("--no_hflip", action="store_true")
-    p.add_argument("--train_timesteps", type=int, default=1000)
+    p.add_argument("--train_timesteps", type=int, default=TT)
     p.add_argument("--beta_schedule", type=str, default="linear", choices=["linear", "scaled_linear", "squaredcos_cap_v2"])
     p.add_argument("--model_channels", type=int, nargs="+", default=[128, 256, 256],
                    help="UNet block_out_channels, e.g. --model_channels 128 256 256")
     # DDIM sampling
-    p.add_argument("--sample_steps", type=int, default=100, help="DDIM sampling steps (typ. 25~100)")
+    p.add_argument("--sample_steps", type=int, default=DDIM_STEPS, help="DDIM sampling steps (typ. 25~100)")
     p.add_argument("--sample_eta", type=float, default=0.0, help="DDIM eta (0.0 = deterministic)")
     p.add_argument("--sample_interval", type=int, default=5000, help="Log samples every N optimizer steps (0 = never)")
     p.add_argument("--sample_n", type=int, default=64, help="How many images to sample for previews (make it a square number)")
