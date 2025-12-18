@@ -856,20 +856,29 @@ def train(args):
     # ---- Schedulers ----
     ddpm = load_teacher_scheduler_or_fallback(teacher_dir, args.train_timesteps, args.beta_schedule)
     ddim_T = make_ddim(ddpm, prediction_type="epsilon")
-    ddim_S = make_ddim(ddpm, prediction_type="sample")  # student x0-predictor DDIM
+    # ddim_S = make_ddim(ddpm, prediction_type="sample")  # student x0-predictor DDIM
+    ddim_S = make_ddim(ddpm, prediction_type="epsilon")  # student x0-predictor DDIM
 
-    # ---- Student ----
-    student = UNet2DModel(
-        sample_size=args.image_size,
-        in_channels=3,
-        out_channels=3,
-        block_out_channels=tuple(args.student_channels),
-        down_block_types=("DownBlock2D",) * len(args.student_channels),
-        up_block_types=("UpBlock2D",) * len(args.student_channels),
-        layers_per_block=args.layers_per_block,
-        norm_num_groups=args.norm_num_groups,
-        attention_head_dim=None,
-    ).to(device)
+    if args.student_dir != "":
+        student_dir = Path(args.student_dir)
+        student = UNet2DModel.from_pretrained(student_dir.as_posix()).to(device)
+    else:
+        # ---- Student ----
+        student = UNet2DModel(
+            sample_size=args.image_size,
+            in_channels=3,
+            out_channels=3,
+            block_out_channels=tuple(args.student_channels),
+            down_block_types=("DownBlock2D",) * len(args.student_channels),
+            up_block_types=("UpBlock2D",) * len(args.student_channels),
+            layers_per_block=args.layers_per_block,
+            norm_num_groups=args.norm_num_groups,
+            attention_head_dim=None,
+        ).to(device)
+
+    student.train()
+    for p in student.parameters():
+        p.requires_grad = True
 
     print(f"[Info] Teacher params: {count_parameters(teacher):,}", flush=True)
     print(f"[Info] Student params: {count_parameters(student):,}", flush=True)
@@ -1048,9 +1057,10 @@ CLASSN = 100
 CUDA_NUM = 7
 RKD_W = 0.1
 INV_W = 0.1
-INVINV_W = 0.1
-FD_W = 0.0001
-SAME_W = 0.01
+INVINV_W = 1.0
+FD_W = 0.0000001
+SAME_W = 0.0
+
 
 def build_argparser():
     p = argparse.ArgumentParser("Student x0 distillation (single GPU, no accelerate, periodic sampling + FID eval)")
@@ -1064,12 +1074,13 @@ def build_argparser():
                    help="Folder containing test images (optionally class subdirs). Used for standard FID via pytorch-fid.")
 
     p.add_argument("--teacher_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
-    p.add_argument("--output_dir", type=str, default=f"out_1215_rkd_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}-FID-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}")
+    p.add_argument("--student_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
+    p.add_argument("--output_dir", type=str, default=f"out_1218_rkd_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}-FID-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
 
     p.add_argument("--device", type=str, default=f"cuda:{CUDA_NUM}", help='e.g., "cuda:0", "cuda:1", "cpu"')
 
-    p.add_argument("--project", type=str, default="rkd-cifar10-rgb-to-gray-1215")
-    p.add_argument("--run_name", type=str, default=f"student-x0-pixel-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-FID-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}")
+    p.add_argument("--project", type=str, default="rkd-cifar10-rgb-to-gray-1218")
+    p.add_argument("--run_name", type=str, default=f"student-x0-pixel-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-FID-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
     p.add_argument("--wandb_offline", action="store_true")
     p.add_argument("--mixed_precision", type=str, default="fp16", choices=["no", "fp16", "bf16"])
 
