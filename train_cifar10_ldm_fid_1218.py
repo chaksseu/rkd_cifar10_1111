@@ -414,9 +414,9 @@ def train(args):
 # ------------------------- Arguments -------------------------
 
 DATE=1218
-B=256
+B=512
 LR=1e-4
-CUDA_NUM=0
+CUDA_NUM=5
 # VAE Path (User should change this)
 VAE_PATH = f"vae_out_dir/1218_b64_lr0.0001_klW_1e-05/checkpoint-80000" # 예시 경로
 # Latent Scale Factor (Important!)
@@ -461,9 +461,9 @@ def parse_args():
     # Sampling / FID
     parser.add_argument("--sample_steps", type=int, default=50)
     parser.add_argument("--sample_eta", type=float, default=0.0)
-    parser.add_argument("--sample_interval", type=int, default=500)
-    parser.add_argument("--fid_interval", type=int, default=500)
-    parser.add_argument("--save_interval", type=int, default=500)
+    parser.add_argument("--sample_interval", type=int, default=5000)
+    parser.add_argument("--fid_interval", type=int, default=5000)
+    parser.add_argument("--save_interval", type=int, default=5000)
     parser.add_argument("--disable_fid", action="store_true")
     parser.add_argument("--fid_batch_size", type=int, default=64)
     parser.add_argument("--fid_gen_batch", type=int, default=256)
