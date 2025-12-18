@@ -340,8 +340,8 @@ def train(args):
 DATE=1218
 B=64
 LR=1e-4
-KL_W=1e-5
-CUDA_NUM=7
+KL_W=1e-7
+CUDA_NUM=3
 
 def parse_args():
     parser = argparse.ArgumentParser(description="VAE Training Single GPU (2 Datasets Eval + Latent Stats)")
@@ -353,7 +353,7 @@ def parse_args():
 
     parser.add_argument("--output_dir", type=str, default=f"vae_out_dir/{DATE}_b{B}_lr{LR}_klW_{KL_W}_block_64_128")    
     parser.add_argument("--project", type=str, default=f"vae_training_{DATE}")
-    parser.add_argument("--run_name", type=str, default=f"vae_b{B}_lr{LR}_klW_{KL_W}")
+    parser.add_argument("--run_name", type=str, default=f"vae_b{B}_lr{LR}_klW_{KL_W}_64_128")
     
     parser.add_argument("--epochs", type=int, default=1000)
     parser.add_argument("--batch_size", type=int, default=B)

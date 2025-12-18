@@ -418,7 +418,7 @@ B=512
 LR=1e-4
 CUDA_NUM=5
 # VAE Path (User should change this)
-VAE_PATH = f"vae_out_dir/1218_b64_lr0.0001_klW_1e-05/checkpoint-80000" # 예시 경로
+VAE_PATH = f"vae_out_dir/1218_b64_lr0.0001_klW_1e-06_block_64_128/checkpoint-53000" # 예시 경로
 # Latent Scale Factor (Important!)
 # If VAE z_std was ~4.0, set this to 0.25 (1/4.0)
 # If VAE z_std was ~0.2, set this to 5.0 (1/0.2)
