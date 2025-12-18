@@ -1,2 +1,0 @@
-[Epoch 001] step=00000001 total=0.286255 rkd=0.040214 inv=0.779688 invinv=1.948478 fid=0.000000 same=0.094168 sMean=4.468373e+01 tMean=2.540271e+01 ddim_steps=58
-[Epoch 001] step=00000002 total=0.194846 rkd=0.043153 inv=0.462130 invinv=1.300515 fid=0.000000 same=0.142662 sMean=4.676499e+01 tMean=2.872039e+01 ddim_steps=57
