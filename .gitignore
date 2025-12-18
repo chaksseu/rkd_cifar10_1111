@@ -9,7 +9,7 @@ ddpm_cifar10_*/
 cifar10_png_*/
 cifar10_student_data_*/
 out_*/
-
+vae_out_dir/
 
 # 파일 확장자
 *.pt
