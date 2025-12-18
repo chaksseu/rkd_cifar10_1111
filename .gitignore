@@ -27,3 +27,7 @@ __pycache__/
 .DS_Store
 .env
 nohup.out
+
+# 유지
+!cifar10_student_data_n100/
+!ddpm_cifar10_rgb_T400_DDIM50/
