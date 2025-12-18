@@ -13,6 +13,7 @@ import argparse
 import shutil
 from pathlib import Path
 from typing import List, Optional
+import random
 
 import numpy as np
 from PIL import Image
@@ -417,8 +418,7 @@ B=256
 LR=1e-4
 CUDA_NUM=0
 # VAE Path (User should change this)
-VAE_PATH = f"./vae_out_dir/1218_b512_lr1e-4_klW_1e-06/checkpoint-100000" # 예시 경로
-
+VAE_PATH = f"vae_out_dir/1218_b64_lr0.0001_klW_1e-05/checkpoint-80000" # 예시 경로
 # Latent Scale Factor (Important!)
 # If VAE z_std was ~4.0, set this to 0.25 (1/4.0)
 # If VAE z_std was ~0.2, set this to 5.0 (1/0.2)
@@ -433,11 +433,11 @@ def parse_args():
     parser.add_argument("--vae_path", type=str, default=VAE_PATH, help="Path to pretrained VAE folder")
     parser.add_argument("--train_dir", type=str, default="cifar10_png_linear_only/rgb/train")
     parser.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/rgb/test", help="For FID")
-    parser.add_argument("--output_dir", type=str, default=f"ldm_out_dir/{DATE}_unet_b{B}_lr{LR}")
+    parser.add_argument("--output_dir", type=str, default=f"ldm_out_dir/{DATE}_ldm_unet_b{B}_lr{LR}")
     
     # WandB
-    parser.add_argument("--project", type=str, default=f"ldm_training_{DATE}_b{B}_lr{LR}")
-    parser.add_argument("--run_name", type=str, default=f"ldm_basic")
+    parser.add_argument("--project", type=str, default=f"ldm_training_{DATE}")
+    parser.add_argument("--run_name", type=str, default=f"ldm_b{B}_lr{LR}")
 
     # Training
     parser.add_argument("--epochs", type=int, default=1000)
@@ -461,9 +461,9 @@ def parse_args():
     # Sampling / FID
     parser.add_argument("--sample_steps", type=int, default=50)
     parser.add_argument("--sample_eta", type=float, default=0.0)
-    parser.add_argument("--sample_interval", type=int, default=5000)
-    parser.add_argument("--fid_interval", type=int, default=5000)
-    parser.add_argument("--save_interval", type=int, default=5000)
+    parser.add_argument("--sample_interval", type=int, default=500)
+    parser.add_argument("--fid_interval", type=int, default=500)
+    parser.add_argument("--save_interval", type=int, default=500)
     parser.add_argument("--disable_fid", action="store_true")
     parser.add_argument("--fid_batch_size", type=int, default=64)
     parser.add_argument("--fid_gen_batch", type=int, default=256)

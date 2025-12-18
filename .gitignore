@@ -31,3 +31,4 @@ nohup.out
 # 유지
 !cifar10_student_data_n100/
 !ddpm_cifar10_rgb_T400_DDIM50/
+!vae_out_dir/1218_b64_lr0.0001_klW_1e-05/checkpoint-80000/
