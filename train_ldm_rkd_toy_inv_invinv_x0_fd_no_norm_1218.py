@@ -985,11 +985,11 @@ def train(args):
 
 BATCH_SIZE = 32
 CLASSN = 100
-CUDA_NUM = 3
+CUDA_NUM = 4
 RKD_W = 0.1
-INV_W = 0.1
-INVINV_W = 1.0
-FD_W = 0.0000001
+INV_W = 0.0
+INVINV_W = .0
+FD_W = 0.0#000001
 SAME_W = 0.0
 
 
@@ -1006,11 +1006,11 @@ def build_argparser():
 
     p.add_argument("--teacher_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
     p.add_argument("--student_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
-    p.add_argument("--output_dir", type=str, default=f"out_1218_rkd_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
+    p.add_argument("--output_dir", type=str, default=f"out_1223_rkd_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
 
     p.add_argument("--device", type=str, default=f"cuda:{CUDA_NUM}", help='e.g., "cuda:0", "cuda:1", "cpu"')
 
-    p.add_argument("--project", type=str, default="rkd-cifar10-rgb-to-gray-1218")
+    p.add_argument("--project", type=str, default="rkd-cifar10-rgb-to-gray-1223")
     p.add_argument("--run_name", type=str, default=f"student-x0-pixel-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
     p.add_argument("--wandb_offline", action="store_true")
     p.add_argument("--mixed_precision", type=str, default="fp16", choices=["no", "fp16", "bf16"])

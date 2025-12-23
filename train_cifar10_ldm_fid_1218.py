@@ -423,7 +423,7 @@ VAE_PATH = f"vae_out_dir/1218_b64_lr0.0001_klW_1e-06_block_64_128/checkpoint-530
 # If VAE z_std was ~4.0, set this to 0.25 (1/4.0)
 # If VAE z_std was ~0.2, set this to 5.0 (1/0.2)
 # Standard SD uses 0.18215. Check your VAE training logs!
-LATENT_SCALE = 1.0 
+LATENT_SCALE = 1.0 / 1.09
 
 def parse_args():
     parser = argparse.ArgumentParser(description="LDM Training Single GPU")
@@ -433,11 +433,11 @@ def parse_args():
     parser.add_argument("--vae_path", type=str, default=VAE_PATH, help="Path to pretrained VAE folder")
     parser.add_argument("--train_dir", type=str, default="cifar10_png_linear_only/rgb/train")
     parser.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/rgb/test", help="For FID")
-    parser.add_argument("--output_dir", type=str, default=f"ldm_out_dir/{DATE}_ldm_unet_b{B}_lr{LR}")
+    parser.add_argument("--output_dir", type=str, default=f"ldm_out_dir/{DATE}_ldm_64_128_unet_b{B}_lr{LR}_128_256_256")
     
     # WandB
     parser.add_argument("--project", type=str, default=f"ldm_training_{DATE}")
-    parser.add_argument("--run_name", type=str, default=f"ldm_b{B}_lr{LR}")
+    parser.add_argument("--run_name", type=str, default=f"ldm_64_128_b{B}_lr{LR}_128_256_256")
 
     # Training
     parser.add_argument("--epochs", type=int, default=1000)
@@ -456,7 +456,7 @@ def parse_args():
     # UNet Config (Attention: Input 32x32 -> Latent 4x4)
     # 4x4 Latent is very small. We cannot downsample much.
     # Recommended: [128, 256] -> 1 downsample -> 2x2 bottleneck.
-    parser.add_argument("--unet_channels", type=int, nargs="+", default=[128, 256], help="UNet channels")
+    parser.add_argument("--unet_channels", type=int, nargs="+", default=[128, 256, 256], help="UNet channels")
 
     # Sampling / FID
     parser.add_argument("--sample_steps", type=int, default=50)
