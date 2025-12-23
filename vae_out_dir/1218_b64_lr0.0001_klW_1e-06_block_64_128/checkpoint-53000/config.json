@@ -3,8 +3,8 @@
   "_diffusers_version": "0.35.2",
   "act_fn": "silu",
   "block_out_channels": [
-    64,
-    128
+    32,
+    64
   ],
   "down_block_types": [
     "DownEncoderBlock2D",

@@ -341,7 +341,7 @@ DATE=1218
 B=64
 LR=1e-4
 KL_W=1e-7
-CUDA_NUM=3
+CUDA_NUM=1
 
 def parse_args():
     parser = argparse.ArgumentParser(description="VAE Training Single GPU (2 Datasets Eval + Latent Stats)")
@@ -366,7 +366,7 @@ def parse_args():
     parser.add_argument("--image_size", type=int, default=32)
     parser.add_argument("--latent_channels", type=int, default=4)
     # parser.add_argument("--model_channels", type=int, nargs="+", default=[64, 128, 256])
-    parser.add_argument("--model_channels", type=int, nargs="+", default=[64, 128])
+    parser.add_argument("--model_channels", type=int, nargs="+", default=[32, 64])
     
     parser.add_argument("--kl_weight", type=float, default=KL_W)
     parser.add_argument("--no_hflip", action="store_true")
