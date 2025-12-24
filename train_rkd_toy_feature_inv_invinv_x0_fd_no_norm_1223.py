@@ -109,7 +109,7 @@ class FeatureEmbedder(nn.Module):
             # But since we replaced fc with Identity, it returns the pooled features directly if aux_logits=False
             # However, torchvision inception forward handles aux logits internally.
             if self.net.training:
-                    # Force eval mode just in case, though we set it in init
+                # Force eval mode just in case, though we set it in init
                 self.net.eval()
             out = self.net(x_norm)
             # out is (N, 2048)
@@ -181,8 +181,8 @@ def mean_from_vectors(vectors: List[torch.Tensor], device: torch.device, eps: fl
     s = torch.zeros((), device=device, dtype=torch.float64)
     c = torch.zeros((), device=device, dtype=torch.float64)
 
-    for v in vectors:
-        vv = v#.detach()
+    for vv in vectors:
+        # vv = v#.detach()
         s = s + vv.sum().to(torch.float64)
         c = c + torch.tensor(float(vv.numel()), device=device, dtype=torch.float64)
 
@@ -336,28 +336,24 @@ def student_predx0_seq_with_grad(student, ddim_S, z, steps, eta, device) -> List
     preds: List[torch.Tensor] = []
     for t in local.timesteps:
         x_in = local.scale_model_input(x, t)
-        x0   = student(x_in, t).sample
-        out  = local.step(model_output=x0, timestep=t, sample=x, eta=eta)
+        eps   = student(x_in, t).sample
+        out  = local.step(model_output=eps, timestep=t, sample=x, eta=eta)
         x    = out.prev_sample
         preds.append(out.pred_original_sample)
     return preds
-
-
 
 
 def invert_x0_to_zT_deterministic_x0pred(student, ddim_S, x0, steps, device) -> torch.Tensor:
     inv = DDIMInverseScheduler.from_config(ddim_S.config)
     inv.set_timesteps(steps, device=device)
     student.train()
-
     xt = x0
     for t in inv.timesteps:
         t_b = torch.full((xt.shape[0],), int(t), device=device, dtype=torch.long)
         latent_in = inv.scale_model_input(xt, t)
-        x0 = student(latent_in, t_b).sample
-        xt = inv.step(x0, t, xt).prev_sample
-
-    return x0
+        eps = student(latent_in, t_b).sample
+        xt = inv.step(eps, t, xt).prev_sample
+    return xt
 
 @torch.no_grad()
 def sample_images_ddim_x0pred(
@@ -390,8 +386,8 @@ def sample_images_ddim_x0pred(
     with autocast_ctx:
         for t in local.timesteps:
             x_in = local.scale_model_input(x, t)
-            x0 = student(x_in, t).sample
-            x = local.step(model_output=x0, timestep=t, sample=x, eta=eta, generator=generator).prev_sample
+            eps = student(x_in, t).sample
+            x = local.step(model_output=eps, timestep=t, sample=x, eta=eta, generator=generator).prev_sample
 
     if was_training:
         student.train()
@@ -412,7 +408,7 @@ def compute_losses(
     device = x0_real.device
 
     # Get Last items (raw images)
-    T_last_img = preds_T[-1].detach()
+    T_last_img = preds_T[-1]
     S_last_img = preds_S[-1]
     
     # Pre-extract features for static targets to save computation if reused
@@ -428,7 +424,7 @@ def compute_losses(
     if args.w_rkd != 0.0:
         if args.rkd_teacher_ref == "last":
             # Teacher reference is always the final image features
-            feats_T_last = get_feats(T_last_img).detach()
+            feats_T_last = get_feats(T_last_img)
             T_ref_pdist = pdist_vec(feats_T_last, eps=eps)
             
             for k in range(0, len(preds_S), max(1, args.rkd_stride)):
@@ -438,7 +434,7 @@ def compute_losses(
         else:  # matched
             for k in range(0, len(preds_S), max(1, args.rkd_stride)):
                 feats_S = get_feats(preds_S[k])
-                feats_T = get_feats(preds_T[k].detach()).detach()
+                feats_T = get_feats(preds_T[k])
                 rkd_s_list.append(pdist_vec(feats_S, eps=eps))
                 rkd_t_list.append(pdist_vec(feats_T, eps=eps))
 
@@ -1001,11 +997,11 @@ def train(args):
 BATCH_SIZE = 8
 CLASSN = 100
 RKD_METRIC="clip" # pixel inception clip
-CUDA_NUM = 6
+CUDA_NUM = 3
 RKD_W = 0.1
 INV_W = 0.1
 INVINV_W = 1.0
-FD_W = 0.00000001
+FD_W = 0.000001
 SAME_W = 0.01
 
 def build_argparser():
@@ -1025,7 +1021,7 @@ def build_argparser():
 
     p.add_argument("--device", type=str, default=f"cuda:{CUDA_NUM}")
     p.add_argument("--project", type=str, default="rkd-feature-cifar10-rgb-to-gray-1223")
-    p.add_argument("--run_name", type=str, default=f"student-{RKD_METRIC}-x0-pixel-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teaceher-init-eps")
+    p.add_argument("--run_name", type=str, default=f"student-{RKD_METRIC}-x0-pixel-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
     p.add_argument("--wandb_offline", action="store_true")
     p.add_argument("--mixed_precision", type=str, default="fp16", choices=["no", "fp16", "bf16"])
 
