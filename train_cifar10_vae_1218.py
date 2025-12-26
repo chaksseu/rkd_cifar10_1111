@@ -280,7 +280,7 @@ def train(args):
                 z = posterior.sample()
                 recon = model.decode(z).sample
 
-                rec_loss = F.l1_loss(recon, x)
+                rec_loss = F.mse_loss(recon, x)
                 kl_loss = posterior.kl().mean()
                 loss = rec_loss + args.kl_weight * kl_loss
 
@@ -337,11 +337,11 @@ def train(args):
 
 # ------------------------- Arguments -------------------------
 
-DATE=1218
+DATE=1226
 B=64
 LR=1e-4
-KL_W=1e-7
-CUDA_NUM=1
+KL_W=1e-10
+CUDA_NUM=7
 
 def parse_args():
     parser = argparse.ArgumentParser(description="VAE Training Single GPU (2 Datasets Eval + Latent Stats)")
@@ -351,9 +351,9 @@ def parse_args():
     parser.add_argument("--test_dir1", type=str, default="cifar10_png_linear_only/rgb/test", help="First test dataset")
     parser.add_argument("--test_dir2", type=str, default="cifar10_png_linear_only/gray3/test", help="Second test dataset (optional)")
 
-    parser.add_argument("--output_dir", type=str, default=f"vae_out_dir/{DATE}_b{B}_lr{LR}_klW_{KL_W}_block_64_128")    
+    parser.add_argument("--output_dir", type=str, default=f"vae_out_dir/{DATE}_b{B}_lr{LR}_MSE_klW_{KL_W}_block_64_128_256")    
     parser.add_argument("--project", type=str, default=f"vae_training_{DATE}")
-    parser.add_argument("--run_name", type=str, default=f"vae_b{B}_lr{LR}_klW_{KL_W}_64_128")
+    parser.add_argument("--run_name", type=str, default=f"vae_b{B}_lr{LR}_MSE_klW_{KL_W}_64_128_256")
     
     parser.add_argument("--epochs", type=int, default=1000)
     parser.add_argument("--batch_size", type=int, default=B)
@@ -365,8 +365,9 @@ def parse_args():
     # Model Config
     parser.add_argument("--image_size", type=int, default=32)
     parser.add_argument("--latent_channels", type=int, default=4)
-    # parser.add_argument("--model_channels", type=int, nargs="+", default=[64, 128, 256])
-    parser.add_argument("--model_channels", type=int, nargs="+", default=[32, 64])
+    # parser.add_argument("--model_channels", type=int, nargs="+", default=[64, 128])
+    parser.add_argument("--model_channels", type=int, nargs="+", default=[64, 128, 256])
+    # parser.add_argument("--model_channels", type=int, nargs="+", default=[32, 64])
     
     parser.add_argument("--kl_weight", type=float, default=KL_W)
     parser.add_argument("--no_hflip", action="store_true")
