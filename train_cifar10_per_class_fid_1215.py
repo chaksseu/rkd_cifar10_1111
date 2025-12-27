@@ -21,7 +21,7 @@ Example:
 """
 
 import os
-# os.environ["CUDA_VISIBLE_DEVICES"] = "7"   # <= 이 줄 추가 (GPU 0만 보이게)
+os.environ["CUDA_VISIBLE_DEVICES"] = "4"   # <= 이 줄 추가 (GPU 0만 보이게)
 
 
 import os
@@ -371,16 +371,34 @@ def train(args):
     num_test_imgs = accelerator.gather_for_metrics(torch.tensor([num_test_imgs], device=device)).max().item()
 
     # Model
+    # model = UNet2DModel(
+    #     sample_size=args.image_size,
+    #     in_channels=3,
+    #     out_channels=3,
+    #     block_out_channels=tuple(args.model_channels),  # e.g. (128, 256, 256)
+    #     down_block_types=("DownBlock2D",) * len(args.model_channels),
+    #     up_block_types=("UpBlock2D",) * len(args.model_channels),
+    #     layers_per_block=2,
+    #     norm_num_groups=32,
+    #     attention_head_dim=None,
+    # )
     model = UNet2DModel(
         sample_size=args.image_size,
         in_channels=3,
         out_channels=3,
-        block_out_channels=tuple(args.model_channels),  # e.g. (128, 256, 256)
-        down_block_types=("DownBlock2D",) * len(args.model_channels),
-        up_block_types=("UpBlock2D",) * len(args.model_channels),
         layers_per_block=2,
+        block_out_channels=tuple(args.model_channels),
+        down_block_types=(
+            "DownBlock2D",      # 16x16 -> 8x8 (여기선 CNN만 써서 특징 추출)
+            "AttnDownBlock2D",  # 8x8 -> 4x4   (Self-Attention 추가)
+            "AttnDownBlock2D",  # 4x4 -> 2x2   (Self-Attention 추가)
+        ),
+        up_block_types=(
+            "AttnUpBlock2D",    # 2x2 -> 4x4
+            "AttnUpBlock2D",    # 4x4 -> 8x8
+            "UpBlock2D",        # 8x8 -> 16x16
+        ),
         norm_num_groups=32,
-        attention_head_dim=None,
     )
     accelerator.print(f"[Info] Model parameters: {count_parameters(model):,}")
 
@@ -572,20 +590,20 @@ def train(args):
 
     accelerator.end_training()
 
-TT=100
+TT=400
 DDIM_STEPS=50
 def build_argparser():
     p = argparse.ArgumentParser(description="Accelerate-based unconditional DDPM training + DDIM sampling (W&B logging + local saves + FID overall & per-class)")
     # data / io
     p.add_argument("--train_dir", type=str, default="./cifar10_png_linear_only/rgb/train", help="Folder with images (recursively reads *.png/*.jpg)")
     p.add_argument("--test_dir",  type=str, default="./cifar10_png_linear_only/rgb/test",  help="Folder with class subdirs containing PNGs (used for FID)")
-    p.add_argument("--output_dir", type=str, default=f"./ddpm_cifar10_rgb_T{TT}_DDIM{DDIM_STEPS}", help="Where to save checkpoints & final model")
+    p.add_argument("--output_dir", type=str, default=f"./ddpm_attn_cifar10_rgb_T{TT}_DDIM{DDIM_STEPS}", help="Where to save checkpoints & final model")
     # logging
-    p.add_argument("--project", type=str, default="ddpm-cifar10-1215", help="W&B project name")
-    p.add_argument("--run_name", type=str, default="rgb-linear-ddpm-b256-lr1e4", help="W&B run name")
+    p.add_argument("--project", type=str, default="ddpm-attn-cifar10-1227", help="W&B project name")
+    p.add_argument("--run_name", type=str, default="rgb-linear-ddpm-attn-b256-lr1e4", help="W&B run name")
     p.add_argument("--wandb_offline", action="store_true", help="Use W&B offline mode (WANDB_MODE=offline)")
     # train
-    p.add_argument("--epochs", type=int, default=1000)
+    p.add_argument("--epochs", type=int, default=10000)
     p.add_argument("--batch_size", type=int, default=256)
     p.add_argument("--num_workers", type=int, default=4)
     p.add_argument("--grad_accum", type=int, default=1, help="Gradient accumulation steps")

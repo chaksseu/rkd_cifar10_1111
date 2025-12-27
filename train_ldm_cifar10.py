@@ -280,7 +280,6 @@ def train(args):
             "AttnUpBlock2D",    # 4x4 -> 8x8
             "UpBlock2D",        # 8x8 -> 16x16
         ),
-        
         norm_num_groups=32,
     )
 
@@ -413,14 +412,14 @@ def train(args):
 # ------------------------- Arguments -------------------------
 
 DATE=1227
-B=512
+B=256
 LR=1e-4
-CUDA_NUM=1
+CUDA_NUM=7
 
 # [USER REQUIRED] VAE 경로와 Scale Factor를 설정하세요.
 # LATENT_SCALE = 1.0 / (VAE 학습 시의 z_std)
-LATENT_SCALE = 1 / 2.4631
-VAE_CHECKPOINT = "vae_out_dir/1227_b64_lr0.0001_MSE_klW_1e-08_block_64_128/checkpoint-1000000" # 수정 필요
+LATENT_SCALE = 1 / 1.5018
+VAE_CHECKPOINT = "1227_b64_lr0.0001_MSE_klW_1e-07_block_64_128_256-checkpoint-1000000" # 수정 필요
 
 def parse_args():
     parser = argparse.ArgumentParser(description="LDM Training Single GPU")
@@ -433,7 +432,7 @@ def parse_args():
     parser.add_argument("--output_dir", type=str, default=f"ldm_out_dir/{DATE}_cifar10_attn_unet_128_256_256_b{B}_lr{LR}")
     
     # WandB
-    parser.add_argument("--project", type=str, default=f"ldm_training_{DATE}")
+    parser.add_argument("--project", type=str, default=f"ddpm-attn-cifar10-{DATE}")
     parser.add_argument("--run_name", type=str, default=f"ldm_attn_128_256_256_cifar10_b{B}")
 
     # Training
@@ -459,9 +458,9 @@ def parse_args():
     # Sampling / FID
     parser.add_argument("--sample_steps", type=int, default=50)
     parser.add_argument("--sample_eta", type=float, default=0.0)
-    parser.add_argument("--sample_interval", type=int, default=10000)
-    parser.add_argument("--fid_interval", type=int, default=10000)
-    parser.add_argument("--save_interval", type=int, default=10000)
+    parser.add_argument("--sample_interval", type=int, default=5000)
+    parser.add_argument("--fid_interval", type=int, default=5000)
+    parser.add_argument("--save_interval", type=int, default=5000)
     parser.add_argument("--disable_fid", action="store_true")
     parser.add_argument("--fid_batch_size", type=int, default=64)
     parser.add_argument("--fid_gen_batch", type=int, default=256)

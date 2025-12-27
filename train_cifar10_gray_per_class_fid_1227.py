@@ -371,17 +371,37 @@ def train(args):
     num_test_imgs = accelerator.gather_for_metrics(torch.tensor([num_test_imgs], device=device)).max().item()
 
     # Model
+    # model = UNet2DModel(
+    #     sample_size=args.image_size,
+    #     in_channels=3,
+    #     out_channels=3,
+    #     block_out_channels=tuple(args.model_channels),  # e.g. (128, 256, 256)
+    #     down_block_types=("DownBlock2D",) * len(args.model_channels),
+    #     up_block_types=("UpBlock2D",) * len(args.model_channels),
+    #     layers_per_block=2,
+    #     norm_num_groups=32,
+    #     attention_head_dim=None,
+    # )
+
     model = UNet2DModel(
         sample_size=args.image_size,
         in_channels=3,
         out_channels=3,
-        block_out_channels=tuple(args.model_channels),  # e.g. (128, 256, 256)
-        down_block_types=("DownBlock2D",) * len(args.model_channels),
-        up_block_types=("UpBlock2D",) * len(args.model_channels),
         layers_per_block=2,
+        block_out_channels=tuple(args.model_channels),
+        down_block_types=(
+            "DownBlock2D",      # 16x16 -> 8x8 (여기선 CNN만 써서 특징 추출)
+            "AttnDownBlock2D",  # 8x8 -> 4x4   (Self-Attention 추가)
+            "AttnDownBlock2D",  # 4x4 -> 2x2   (Self-Attention 추가)
+        ),
+        up_block_types=(
+            "AttnUpBlock2D",    # 2x2 -> 4x4
+            "AttnUpBlock2D",    # 4x4 -> 8x8
+            "UpBlock2D",        # 8x8 -> 16x16
+        ),
         norm_num_groups=32,
-        attention_head_dim=None,
     )
+
     accelerator.print(f"[Info] Model parameters: {count_parameters(model):,}")
 
     # Schedulers
@@ -577,13 +597,13 @@ DDIM_STEPS=50
 def build_argparser():
     p = argparse.ArgumentParser(description="Accelerate-based unconditional DDPM training + DDIM sampling (W&B logging + local saves + FID overall & per-class)")
     # data / io
-    # p.add_argument("--train_dir", type=str, default="./cifar10_png_linear_only/gray3/train", help="Folder with images (recursively reads *.png/*.jpg)")
-    p.add_argument("--train_dir", type=str, default="cifar10_student_data_n100/gray3/train", help="Folder with images (recursively reads *.png/*.jpg)")
+    p.add_argument("--train_dir", type=str, default="./cifar10_png_linear_only/gray3/train", help="Folder with images (recursively reads *.png/*.jpg)")
+    # p.add_argument("--train_dir", type=str, default="cifar10_student_data_n100/gray3/train", help="Folder with images (recursively reads *.png/*.jpg)")
     p.add_argument("--test_dir",  type=str, default="./cifar10_png_linear_only/gray3/test",  help="Folder with class subdirs containing PNGs (used for FID)")
-    p.add_argument("--output_dir", type=str, default=f"./ddpm_cifar10_gray3_T{TT}_DDIM{DDIM_STEPS}-CLASS_N100", help="Where to save checkpoints & final model")
+    p.add_argument("--output_dir", type=str, default=f"./ddpm_attn_cifar10_gray3_T{TT}_DDIM{DDIM_STEPS}-CLASS_ALL", help="Where to save checkpoints & final model")
     # logging
-    p.add_argument("--project", type=str, default="ddpm-cifar10-gray3-1227", help="W&B project name")
-    p.add_argument("--run_name", type=str, default="gray3-linear-ddpm-b256-lr1e4-CLASS_N100", help="W&B run name")
+    p.add_argument("--project", type=str, default="ddpm-attn-cifar10-1227", help="W&B project name")
+    p.add_argument("--run_name", type=str, default="gray3-linear-ddpm-attn-b256-lr1e4-CLASS_ALL", help="W&B run name")
     p.add_argument("--wandb_offline", action="store_true", help="Use W&B offline mode (WANDB_MODE=offline)")
     # train
     p.add_argument("--epochs", type=int, default=10000)

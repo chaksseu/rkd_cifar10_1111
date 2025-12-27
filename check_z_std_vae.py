@@ -5,7 +5,9 @@ from torchvision import transforms as T
 from torchvision.datasets import ImageFolder # 또는 기존 Dataset 클래스 사용
 
 # 설정
-VAE_PATH = "vae_out_dir/1227_b64_lr0.0001_MSE_klW_1e-08_block_64_128/checkpoint-1000000" # 수정 필요
+# VAE_PATH = "vae_out_dir/1227_b64_lr0.0001_MSE_klW_1e-08_block_64_128/checkpoint-1000000" # 수정 필요
+VAE_PATH = "1227_b64_lr0.0001_MSE_klW_1e-07_block_64_128_256-checkpoint-1000000" # 수정 필요
+
 DATA_DIR = "cifar10_png_linear_only/rgb/train" # 수정 필요
 DEVICE = "cuda"
 
