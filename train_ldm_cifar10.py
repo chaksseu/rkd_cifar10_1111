@@ -414,12 +414,12 @@ def train(args):
 DATE=1227
 B=256
 LR=1e-4
-CUDA_NUM=7
+CUDA_NUM=3
 
 # [USER REQUIRED] VAE 경로와 Scale Factor를 설정하세요.
 # LATENT_SCALE = 1.0 / (VAE 학습 시의 z_std)
-LATENT_SCALE = 1 / 1.5018
-VAE_CHECKPOINT = "1227_b64_lr0.0001_MSE_klW_1e-07_block_64_128_256-checkpoint-1000000" # 수정 필요
+LATENT_SCALE = 1 / 2.4774
+VAE_CHECKPOINT = "1227_b64_lr0.0001_MSE_klW_1e-08_block_64_128-checkpoint-1000000" # 수정 필요
 
 def parse_args():
     parser = argparse.ArgumentParser(description="LDM Training Single GPU")
@@ -427,16 +427,17 @@ def parse_args():
     
     # Paths
     parser.add_argument("--vae_path", type=str, default=VAE_CHECKPOINT, help="Path to pretrained VAE folder")
-    parser.add_argument("--train_dir", type=str, default="cifar10_png_linear_only/rgb/train")
-    parser.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/rgb/test", help="For FID")
-    parser.add_argument("--output_dir", type=str, default=f"ldm_out_dir/{DATE}_cifar10_attn_unet_128_256_256_b{B}_lr{LR}")
+    parser.add_argument("--train_dir", type=str, default="cifar10_png_linear_only/gray3/train")
+    # parser.add_argument("--train_dir", type=str, default="cifar10_student_data_n100/gray3/train")
+    parser.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test", help="For FID")
+    parser.add_argument("--output_dir", type=str, default=f"ldm_out_dir/{DATE}_cifar10_attn_unet_64_128_b{B}_lr{LR}_gray3_classALL")
     
     # WandB
     parser.add_argument("--project", type=str, default=f"ddpm-attn-cifar10-{DATE}")
-    parser.add_argument("--run_name", type=str, default=f"ldm_attn_128_256_256_cifar10_b{B}")
+    parser.add_argument("--run_name", type=str, default=f"ldm_attn_64_128_cifar10_b{B}lr{LR}_gray3_classALL")
 
     # Training
-    parser.add_argument("--epochs", type=int, default=10000)
+    parser.add_argument("--epochs", type=int, default=100000)
     parser.add_argument("--batch_size", type=int, default=B)
     parser.add_argument("--lr", type=float, default=LR)
     parser.add_argument("--weight_decay", type=float, default=0.0)
