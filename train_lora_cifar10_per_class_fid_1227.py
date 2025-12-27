@@ -430,17 +430,17 @@ def build_argparser():
                    help="Path to the folder containing the pre-trained UNet and scheduler (e.g. ./ddpm_cifar10/final)")
     
     # LoRA Config
-    p.add_argument("--lora_rank", type=int, default=16, help="Rank of LoRA update matrices")
-    p.add_argument("--lora_alpha", type=int, default=16, help="LoRA scaling factor")
+    p.add_argument("--lora_rank", type=int, default=32, help="Rank of LoRA update matrices")
+    p.add_argument("--lora_alpha", type=int, default=32, help="LoRA scaling factor")
 
     # Data (New Dataset)
     p.add_argument("--train_dir", type=str, default="cifar10_student_data_n100/gray3/train", help="Path to NEW training data")
     p.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test", help="Path to NEW test data (for FID)")
     
     # Training Config
-    p.add_argument("--output_dir", type=str, default=f"./ddpm_attn_LoRA_r16_a16_cifar10_rgb_T{TT}_DDIM{DDIM_STEPS}", help="Where to save checkpoints & final model")
+    p.add_argument("--output_dir", type=str, default=f"./ddpm_attn_LoRA_gray_r32_a32_cifar10_rgb_T{TT}_DDIM{DDIM_STEPS}", help="Where to save checkpoints & final model")
     p.add_argument("--project", type=str, default="ddpm-attn-cifar10-1227", help="W&B project name")
-    p.add_argument("--run_name", type=str, default=f"ddpm-attn-LoRA_r16_a16_-b{B}-lr{LR}", help="W&B run name")
+    p.add_argument("--run_name", type=str, default=f"ddpm-attn-LoRA_gray_r32_a32_-b{B}-lr{LR}", help="W&B run name")
     p.add_argument("--wandb_offline", action="store_true")
     
     p.add_argument("--epochs", type=int, default=10000)

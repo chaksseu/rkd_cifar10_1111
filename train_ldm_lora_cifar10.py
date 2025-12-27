@@ -439,15 +439,15 @@ def parse_args():
     # parser.add_argument("--train_dir", type=str, default="cifar10_png_linear_only/gray3/train")
     parser.add_argument("--train_dir", type=str, default="cifar10_student_data_n100/gray3/train")
     parser.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test", help="For FID")
-    parser.add_argument("--output_dir", type=str, default=f"ldm_lora_out/{DATE}_cifar10_lora_r16_a16_lr{LR}")
+    parser.add_argument("--output_dir", type=str, default=f"ldm_lora_out/{DATE}_cifar10_lora_gray_r32_a32_lr{LR}")
     
     # LoRA Config
-    parser.add_argument("--lora_rank", type=int, default=16)
-    parser.add_argument("--lora_alpha", type=int, default=16)
+    parser.add_argument("--lora_rank", type=int, default=32)
+    parser.add_argument("--lora_alpha", type=int, default=32)
 
     # WandB
     parser.add_argument("--project", type=str, default="ddpm-attn-cifar10-1227", help="W&B project name")
-    parser.add_argument("--run_name", type=str, default=f"ldm-attn-LoRA_r16_a16_-b{B}-lr{LR}", help="W&B run name")
+    parser.add_argument("--run_name", type=str, default=f"ldm-attn-LoRA_gray_r32_a32_-b{B}-lr{LR}", help="W&B run name")
 
     # Training
     parser.add_argument("--epochs", type=int, default=10000)
