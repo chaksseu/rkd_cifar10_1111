@@ -262,27 +262,37 @@ def train(args):
 
     # 2. Setup LDM UNet (Attention 적용 버전)
     print(f"[Info] Initializing UNet with Attention...")
+    # unet = UNet2DModel(
+    #     sample_size=latent_shape[1],  # 16
+    #     in_channels=latent_shape[0],  # Latent Channel (보통 4)
+    #     out_channels=latent_shape[0], 
+    #     layers_per_block=2,
+    #     block_out_channels=tuple(args.unet_channels),
+
+    #     # 얕은 층은 DownBlock, 깊은 층(해상도 낮은 곳)은 AttnDownBlock 사용
+    #     down_block_types=(
+    #         "DownBlock2D",      # 16x16 -> 8x8 (여기선 CNN만 써서 특징 추출)
+    #         "AttnDownBlock2D",  # 8x8 -> 4x4   (Self-Attention 추가)
+    #         "AttnDownBlock2D",  # 4x4 -> 2x2   (Self-Attention 추가)
+    #     ),
+    #     up_block_types=(
+    #         "AttnUpBlock2D",    # 2x2 -> 4x4
+    #         "AttnUpBlock2D",    # 4x4 -> 8x8
+    #         "UpBlock2D",        # 8x8 -> 16x16
+    #     ),
+    #     norm_num_groups=32,
+    # )
     unet = UNet2DModel(
         sample_size=latent_shape[1],  # 16
         in_channels=latent_shape[0],  # Latent Channel (보통 4)
         out_channels=latent_shape[0], 
+        block_out_channels=tuple(args.unet_channels),  # e.g. (128, 256, 256)
+        down_block_types=("DownBlock2D",) * len(args.unet_channels),
+        up_block_types=("UpBlock2D",) * len(args.unet_channels),
         layers_per_block=2,
-        block_out_channels=tuple(args.unet_channels),
-
-        # 얕은 층은 DownBlock, 깊은 층(해상도 낮은 곳)은 AttnDownBlock 사용
-        down_block_types=(
-            "DownBlock2D",      # 16x16 -> 8x8 (여기선 CNN만 써서 특징 추출)
-            "AttnDownBlock2D",  # 8x8 -> 4x4   (Self-Attention 추가)
-            "AttnDownBlock2D",  # 4x4 -> 2x2   (Self-Attention 추가)
-        ),
-        up_block_types=(
-            "AttnUpBlock2D",    # 2x2 -> 4x4
-            "AttnUpBlock2D",    # 4x4 -> 8x8
-            "UpBlock2D",        # 8x8 -> 16x16
-        ),
         norm_num_groups=32,
+        attention_head_dim=None,
     )
-
 
     unet.to(device)
     print(f"[Info] UNet Parameters: {count_parameters(unet):,}")
@@ -411,10 +421,10 @@ def train(args):
 
 # ------------------------- Arguments -------------------------
 
-DATE=1227
+DATE=1228
 B=256
 LR=1e-4
-CUDA_NUM=7
+CUDA_NUM=4
 
 # [USER REQUIRED] VAE 경로와 Scale Factor를 설정하세요.
 # LATENT_SCALE = 1.0 / (VAE 학습 시의 z_std)
@@ -427,14 +437,14 @@ def parse_args():
     
     # Paths
     parser.add_argument("--vae_path", type=str, default=VAE_CHECKPOINT, help="Path to pretrained VAE folder")
-    parser.add_argument("--train_dir", type=str, default="cifar10_png_linear_only/rgb/train")
-    # parser.add_argument("--train_dir", type=str, default="cifar10_student_data_n100/gray3/train")
-    parser.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/rgb/test", help="For FID")
-    parser.add_argument("--output_dir", type=str, default=f"ldm_out_dir/{DATE}_cifar10_attn_unet_64_128_b{B}_lr{LR}_rgb")
+    # parser.add_argument("--train_dir", type=str, default="cifar10_png_linear_only/gray3/train")
+    parser.add_argument("--train_dir", type=str, default="cifar10_student_data_n100/gray3/train")
+    parser.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test", help="For FID")
+    parser.add_argument("--output_dir", type=str, default=f"ldm_out_dir/{DATE}_cifar10_unet_64_128_b{B}_lr{LR}_gray3_N100")
     
     # WandB
-    parser.add_argument("--project", type=str, default=f"ddpm-attn-cifar10-{DATE}")
-    parser.add_argument("--run_name", type=str, default=f"ldm_attn_64_128_cifar10_b{B}lr{LR}_gray3_rgb")
+    parser.add_argument("--project", type=str, default=f"ddpm-cifar10-{DATE}")
+    parser.add_argument("--run_name", type=str, default=f"ldm_64_128_cifar10_b{B}lr{LR}_gray3_N100")
 
     # Training
     parser.add_argument("--epochs", type=int, default=100000)

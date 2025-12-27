@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Train a VAE (AutoencoderKL) on a Single GPU.
-Full Evaluation: MSE, PSNR, SSIM + Latent Stats (Mean, Std, KL).
+Train a Latent Diffusion Model (LDM) on a Single GPU.
+Optimized for 16x16 Latent Space (from 32x32 Image / f=2 VAE).
 """
 
 import os
 import argparse
-import random
+import shutil
 from pathlib import Path
-from typing import List
+from typing import List, Optional
+import random
 
 import numpy as np
 from PIL import Image
@@ -22,16 +23,7 @@ import torchvision.transforms as T
 import torchvision.utils as vutils
 
 import wandb
-from diffusers import AutoencoderKL
-
-# Try importing torchmetrics
-try:
-    from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
-    HAS_TORCHMETRICS = True
-except ImportError:
-    print("[Warning] torchmetrics not installed. SSIM will be skipped.")
-    HAS_TORCHMETRICS = False
-
+from diffusers import UNet2DModel, DDPMScheduler, DDIMScheduler, AutoencoderKL
 
 # ------------------------- Utils -------------------------
 
@@ -42,6 +34,9 @@ def set_seed(seed: int):
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
+def count_parameters(model) -> int:
+    return sum(p.numel() for p in model.parameters())
+
 def to_grid(images: torch.Tensor, nrow: int = 8) -> Image.Image:
     # images: [-1, 1] -> [0, 255] grid
     imgs = (images.clamp(-1, 1) + 1) / 2.0
@@ -49,11 +44,40 @@ def to_grid(images: torch.Tensor, nrow: int = 8) -> Image.Image:
     grid = (grid * 255.0).clamp(0, 255).byte().permute(1, 2, 0).cpu().numpy()
     return Image.fromarray(grid)
 
-def manual_psnr(pred, target):
-    mse = F.mse_loss(pred, target)
-    if mse == 0:
-        return 100.0
-    return 10. * torch.log10((2.0 ** 2) / mse)
+def ensure_dir(p: Path):
+    p.mkdir(parents=True, exist_ok=True)
+
+def collect_image_paths_recursive(root: Path, exts={".png", ".jpg", ".jpeg"}) -> List[Path]:
+    return [p for p in root.rglob("*") if p.suffix.lower() in exts and p.is_file()]
+
+def flatten_real_cache(test_dir: Path, cache_dir: Path) -> int:
+    """Flattens images for FID calculation."""
+    ensure_dir(cache_dir)
+    existing = list(cache_dir.glob("*"))
+    if len(existing) > 0:
+        return len(existing)
+
+    paths = collect_image_paths_recursive(test_dir)
+    print(f"[FID] Flattening test set ({len(paths)} imgs) to {cache_dir} ...")
+    for i, src in enumerate(paths, 1):
+        dst = cache_dir / f"real_{i:06d}{src.suffix.lower()}"
+        try:
+            if hasattr(os, 'symlink'):
+                os.symlink(src.resolve(), dst)
+            else:
+                shutil.copy2(src, dst)
+        except Exception:
+            shutil.copy2(src, dst)
+    return len(paths)
+
+def save_tensor_batch_to_dir(x: torch.Tensor, out_dir: Path, start_idx: int):
+    ensure_dir(out_dir)
+    x01 = (x.clamp(-1, 1) + 1) / 2.0
+    x255 = (x01 * 255.0).clamp(0, 255).byte().cpu()
+    for i in range(x255.shape[0]):
+        arr = x255[i].permute(1, 2, 0).numpy()
+        img = Image.fromarray(arr)
+        img.save(out_dir / f"gen_{start_idx + i:06d}.png")
 
 
 # ------------------------- Dataset -------------------------
@@ -85,131 +109,110 @@ class ImageFolderDataset(Dataset):
         return x * 2.0 - 1.0
 
 
-# ------------------------- Evaluation -------------------------
+# ------------------------- Sampling (Latent DDIM) -------------------------
 
 @torch.no_grad()
-def evaluate_reconstruction(
-    model: AutoencoderKL,
-    loader: DataLoader,
+def sample_ldm_ddim(
+    unet: UNet2DModel,
+    vae: AutoencoderKL,
+    ddim_scheduler: DDIMScheduler,
+    num_images: int,
+    latent_shape: tuple,  # (C, H, W)
+    scale_factor: float,
+    device: torch.device,
+    steps: int = 50,
+    eta: float = 0.0,
+    generator: Optional[torch.Generator] = None,
+) -> torch.Tensor:
+    unet.eval()
+    vae.eval()
+    
+    ddim_scheduler.set_timesteps(steps, device=device)
+    
+    # Start with random latent noise
+    z = torch.randn((num_images, *latent_shape), device=device, generator=generator)
+
+    for t in ddim_scheduler.timesteps:
+        noise_pred = unet(z, t).sample
+        z = ddim_scheduler.step(noise_pred, t, z, eta=eta, generator=generator).prev_sample
+
+    # Rescale back and Decode
+    z = z / scale_factor
+    images = vae.decode(z).sample
+
+    unet.train()
+    return images
+
+
+# ------------------------- FID -------------------------
+
+def compute_fid(
+    unet: UNet2DModel,
+    vae: AutoencoderKL,
+    ddim_scheduler: DDIMScheduler,
+    args,
     device: torch.device,
     global_step: int,
-    output_dir: Path,
-    dataset_name: str,
-    mixed_precision: str = "no"
+    real_cache_dir: Path,
+    num_test_imgs: int,
+    latent_shape: tuple,
 ):
-    model.eval()
-    
-    # Accumulators for Reconstruction Metrics
-    mse_accum = 0.0
-    
-    # Accumulators for Latent Stats
-    z_mean_accum = 0.0
-    z_std_accum = 0.0
-    kl_loss_accum = 0.0
-    
-    if HAS_TORCHMETRICS:
-        psnr_metric = PeakSignalNoiseRatio(data_range=2.0).to(device)
-        ssim_metric = StructuralSimilarityIndexMeasure(data_range=2.0).to(device)
-    else:
-        psnr_accum = 0.0
-        count = 0
-
-    preview_batch = None
-    preview_recon = None
-    
-    total_batches = len(loader)
-    if total_batches == 0:
+    if args.disable_fid:
         return
 
-    for i, x in enumerate(loader):
-        x = x.to(device)
-        
-        # AMP Context for Eval
-        with torch.amp.autocast('cuda', enabled=(mixed_precision == "fp16")):
-            # 1. Encode
-            posterior = model.encode(x).latent_dist
-            z = posterior.sample()
-            
-            # 2. Latent Statistics (Test Set)
-            z_mean_accum += z.mean().item()
-            z_std_accum += z.std().item()
-            kl_loss_accum += posterior.kl().mean().item()
+    try:
+        from pytorch_fid.fid_score import calculate_fid_given_paths
+    except ImportError:
+        print("[FID] pytorch-fid not installed. Skipping.")
+        return
 
-            # 3. Decode
-            recon = model.decode(z).sample
-            recon = recon.clamp(-1, 1)
+    gen_dir = Path(args.output_dir) / "fid_gen" / f"step{global_step:06d}"
+    if gen_dir.exists():
+        shutil.rmtree(gen_dir)
+    ensure_dir(gen_dir)
 
-        # Metrics (Calculate in float32)
-        recon_f32 = recon.float()
-        x_f32 = x.float()
+    print(f"[FID] Generating {num_test_imgs} samples to {gen_dir} ...")
+    gen = torch.Generator(device=device)
+    gen.manual_seed(args.seed + global_step)
 
-        # 4. Recon Loss (MSE)
-        batch_mse = F.mse_loss(recon_f32, x_f32).item()
-        mse_accum += batch_mse
-
-        # 5. PSNR / SSIM
-        if HAS_TORCHMETRICS:
-            psnr_metric.update(recon_f32, x_f32)
-            ssim_metric.update(recon_f32, x_f32)
-        else:
-            psnr_accum += manual_psnr(recon_f32, x_f32).item()
-            count += 1
-        
-        # Keep first batch for visualization
-        if i == 0:
-            preview_batch = x_f32
-            preview_recon = recon_f32
-
-    # --- Compute Final Averages ---
-    final_mse = mse_accum / total_batches
-    final_z_mean = z_mean_accum / total_batches
-    final_z_std = z_std_accum / total_batches
-    final_kl = kl_loss_accum / total_batches
+    remaining = num_test_imgs
+    cursor = 0
     
-    metrics = {}
-    
-    # PSNR/SSIM Finalize
-    if HAS_TORCHMETRICS:
-        final_psnr = psnr_metric.compute().item()
-        final_ssim = ssim_metric.compute().item()
-        psnr_metric.reset()
-        ssim_metric.reset()
-    else:
-        final_psnr = psnr_accum / max(1, count)
-        final_ssim = 0.0 # skipped
+    while remaining > 0:
+        cur = min(args.fid_gen_batch, remaining)
+        with torch.no_grad():
+            with torch.amp.autocast('cuda', enabled=(args.mixed_precision == "fp16")):
+                imgs = sample_ldm_ddim(
+                    unet, vae, ddim_scheduler,
+                    num_images=cur,
+                    latent_shape=latent_shape,
+                    scale_factor=args.latent_scale_factor,
+                    device=device,
+                    steps=args.sample_steps,
+                    eta=args.sample_eta,
+                    generator=gen
+                )
+        save_tensor_batch_to_dir(imgs, gen_dir, start_idx=cursor)
+        cursor += cur
+        remaining -= cur
 
-    # Console Print
-    print(f"[Eval-{dataset_name}] Step={global_step} | "
-          f"MSE: {final_mse:.5f} | PSNR: {final_psnr:.2f}dB | SSIM: {final_ssim:.4f} | "
-          f"z_std: {final_z_std:.3f} | KL: {final_kl:.4f}")
-
-    # Logging Keys
-    metrics[f"val/{dataset_name}/mse"] = final_mse
-    metrics[f"val/{dataset_name}/psnr"] = final_psnr
-    metrics[f"val/{dataset_name}/ssim"] = final_ssim
-    
-    # Latent Stats Logging (Check encoding quality)
-    metrics[f"val/{dataset_name}/z_mean"] = final_z_mean
-    metrics[f"val/{dataset_name}/z_std"] = final_z_std
-    metrics[f"val/{dataset_name}/kl_loss"] = final_kl
-
-    # Save Preview (Top: Real, Bottom: Recon)
-    if preview_batch is not None:
-        n_show = min(8, preview_batch.shape[0])
-        comparison = torch.cat([preview_batch[:n_show], preview_recon[:n_show]], dim=0)
-        grid = to_grid(comparison, nrow=n_show)
-        
-        save_path = output_dir / "previews" / f"{dataset_name}_step{global_step:06d}.png"
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        grid.save(save_path)
+    print(f"[FID] Computing FID against {real_cache_dir} ...")
+    try:
+        fid_score = calculate_fid_given_paths(
+            [real_cache_dir.as_posix(), gen_dir.as_posix()],
+            batch_size=args.fid_batch_size,
+            device=device,
+            dims=args.fid_dims,
+        )
+        print(f"[FID] Step={global_step} FID={fid_score:.4f}")
         
         if wandb.run is not None:
-            metrics[f"val/{dataset_name}/preview"] = wandb.Image(grid, caption=f"{dataset_name}: Top=Real, Bottom=Recon")
+            wandb.log({"metrics/fid": fid_score}, step=global_step)
+    except Exception as e:
+        print(f"[FID Error] {e}")
 
-    if wandb.run is not None:
-        wandb.log(metrics, step=global_step)
-        
-    model.train()
+    if not args.fid_keep_gen:
+        shutil.rmtree(gen_dir, ignore_errors=True)
 
 
 # ------------------------- Training -------------------------
@@ -225,159 +228,253 @@ def train(args):
 
     wandb.init(project=args.project, name=args.run_name, config=vars(args))
 
-    # --- Data Loaders ---
+    # 1. Load Pretrained VAE
+    print(f"[Info] Loading VAE from {args.vae_path} ...")
+    try:
+        vae = AutoencoderKL.from_pretrained(args.vae_path)
+    except OSError:
+        print("[Error] Could not load VAE. Make sure the path is correct.")
+        return
+
+    vae.eval()
+    vae.requires_grad_(False)
+    vae.to(device)
+    
+    # Calculate Latent Shape Dynamically
+    dummy_img = torch.zeros(1, 3, args.image_size, args.image_size).to(device)
+    with torch.no_grad():
+        dummy_z = vae.encode(dummy_img).latent_dist.sample()
+    latent_shape = dummy_z.shape[1:] # (C, H, W)
+    print(f"[Info] Latent Shape determined: {latent_shape} (from {args.image_size}x{args.image_size} input)")
+    
+    # # 2. Setup LDM UNet
+    # print(f"[Info] Initializing UNet for Latent Space...")
+    # unet = UNet2DModel(
+    #     sample_size=latent_shape[1],  
+    #     in_channels=latent_shape[0],  
+    #     out_channels=latent_shape[0], 
+    #     layers_per_block=2,
+    #     block_out_channels=tuple(args.unet_channels),
+    #     down_block_types=("DownBlock2D",) * len(args.unet_channels),
+    #     up_block_types=("UpBlock2D",) * len(args.unet_channels),
+    #     norm_num_groups=32,
+    # )
+
+    # 2. Setup LDM UNet (Attention 적용 버전)
+    print(f"[Info] Initializing UNet with Attention...")
+    unet = UNet2DModel(
+        sample_size=latent_shape[1],  # 16
+        in_channels=latent_shape[0],  # Latent Channel (보통 4)
+        out_channels=latent_shape[0], 
+        layers_per_block=2,
+        block_out_channels=tuple(args.unet_channels),
+
+        # 얕은 층은 DownBlock, 깊은 층(해상도 낮은 곳)은 AttnDownBlock 사용
+        down_block_types=(
+            "DownBlock2D",      # 16x16 -> 8x8 (여기선 CNN만 써서 특징 추출)
+            "AttnDownBlock2D",  # 8x8 -> 4x4   (Self-Attention 추가)
+            "AttnDownBlock2D",  # 4x4 -> 2x2   (Self-Attention 추가)
+        ),
+        up_block_types=(
+            "AttnUpBlock2D",    # 2x2 -> 4x4
+            "AttnUpBlock2D",    # 4x4 -> 8x8
+            "UpBlock2D",        # 8x8 -> 16x16
+        ),
+        norm_num_groups=32,
+    )
+
+
+    unet.to(device)
+    print(f"[Info] UNet Parameters: {count_parameters(unet):,}")
+
+    # 3. Schedulers
+    noise_scheduler = DDPMScheduler(
+        num_train_timesteps=args.train_timesteps,
+        beta_schedule=args.beta_schedule,
+        prediction_type="epsilon",
+    )
+    ddim_scheduler = DDIMScheduler.from_config(noise_scheduler.config)
+
+    # 4. Optimizer
+    optimizer = torch.optim.AdamW(unet.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    scaler = torch.amp.GradScaler('cuda', enabled=(args.mixed_precision == "fp16"))
+
+    # 5. Data Loader
     train_ds = ImageFolderDataset(args.train_dir, args.image_size, args.center_crop, not args.no_hflip)
     train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, drop_last=True, pin_memory=True)
     
-    test_dl1 = None
-    if args.test_dir1:
-        test_ds1 = ImageFolderDataset(args.test_dir1, args.image_size, args.center_crop, False)
-        if len(test_ds1) > 0:
-            test_dl1 = DataLoader(test_ds1, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True)
-            print(f"[Info] Test Set 1 found: {len(test_ds1)} images.")
-
-    test_dl2 = None
-    if args.test_dir2:
-        test_ds2 = ImageFolderDataset(args.test_dir2, args.image_size, args.center_crop, False)
-        if len(test_ds2) > 0:
-            test_dl2 = DataLoader(test_ds2, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True)
-            print(f"[Info] Test Set 2 found: {len(test_ds2)} images.")
-
-    # --- Model Setup ---
-    num_blocks = len(args.model_channels)
-    down_block_types = ["DownEncoderBlock2D"] * num_blocks
-    up_block_types = ["UpDecoderBlock2D"] * num_blocks
+    # 6. FID Cache
+    fid_real_cache = Path(args.output_dir) / "fid_real_cache"
+    num_test_imgs = 0
+    if not args.disable_fid and args.test_dir:
+        num_test_imgs = flatten_real_cache(Path(args.test_dir), fid_real_cache)
     
-    print(f"[Info] Model Config: Channels={args.model_channels}, Blocks={num_blocks}")
-    
-    model = AutoencoderKL(
-        in_channels=3,
-        out_channels=3,
-        latent_channels=args.latent_channels,
-        block_out_channels=tuple(args.model_channels),
-        down_block_types=tuple(down_block_types),
-        up_block_types=tuple(up_block_types),
-        norm_num_groups=32,
-        layers_per_block=2,
-    )
-    model.to(device)
-    
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    scaler = torch.amp.GradScaler('cuda', enabled=(args.mixed_precision == "fp16"))
-
+    # --- Training Loop ---
     global_step = 0
-    print(f"[Info] Start Training... Epochs: {args.epochs}")
+    print(f"[Info] Start Training LDM... Epochs: {args.epochs}")
 
     for epoch in range(1, args.epochs + 1):
-        model.train()
+        unet.train()
         
         for step, x in enumerate(train_dl):
-            x = x.to(device)
+            x = x.to(device) # [-1, 1]
+            
             optimizer.zero_grad()
 
             with torch.amp.autocast('cuda', enabled=(args.mixed_precision == "fp16")):
-                posterior = model.encode(x).latent_dist
-                z = posterior.sample()
-                recon = model.decode(z).sample
+                # A. Encode Images to Latents (VAE is frozen)
+                with torch.no_grad():
+                    posterior = vae.encode(x).latent_dist
+                    z = posterior.sample() 
+                    # B. Scale Latents
+                    z = z * args.latent_scale_factor
 
-                rec_loss = F.mse_loss(recon, x)
-                kl_loss = posterior.kl().mean()
-                loss = rec_loss + args.kl_weight * kl_loss
+                # C. Add Noise to Latents
+                noise = torch.randn_like(z)
+                bsz = z.shape[0]
+                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=device).long()
+                
+                noisy_z = noise_scheduler.add_noise(z, noise, timesteps)
+
+                # D. Predict Noise
+                noise_pred = unet(noisy_z, timesteps).sample
+
+                # E. Loss
+                loss = F.mse_loss(noise_pred, noise)
 
             scaler.scale(loss).backward()
             
             if args.max_grad_norm > 0:
                 scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+                torch.nn.utils.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
             
             scaler.step(optimizer)
             scaler.update()
 
             global_step += 1
             
-            # Log Training Metrics
+            # Logs
             if global_step % args.log_interval == 0:
-                z_std = z.std().item()
                 wandb.log({
                     "train/loss": loss.item(),
-                    "train/rec_loss": rec_loss.item(),
-                    "train/kl_loss": kl_loss.item(),
-                    "train/z_std": z_std,
                     "train/epoch": epoch,
                     "train/lr": optimizer.param_groups[0]["lr"],
                 }, step=global_step)
-                print(f"[Ep{epoch}] Step {global_step} | Loss: {loss.item():.4f} (Rec: {rec_loss.item():.4f}) | z_std: {z_std:.2f}")
+                print(f"[Ep{epoch}] Step {global_step} | Loss: {loss.item():.4f}")
 
-            # Validation Loop
-            if (args.eval_interval > 0) and (global_step % args.eval_interval == 0):
-                if test_dl1:
-                    evaluate_reconstruction(model, test_dl1, device, global_step, output_dir, "dataset1", args.mixed_precision)
-                if test_dl2:
-                    evaluate_reconstruction(model, test_dl2, device, global_step, output_dir, "dataset2", args.mixed_precision)
+            # Preview Sampling
+            if (args.sample_interval > 0) and (global_step % args.sample_interval == 0):
+                unet.eval() 
+                with torch.no_grad():
+                    with torch.amp.autocast('cuda', enabled=(args.mixed_precision == "fp16")):
+                        gen_imgs = sample_ldm_ddim(
+                            unet, vae, ddim_scheduler,
+                            num_images=16,
+                            latent_shape=latent_shape,
+                            scale_factor=args.latent_scale_factor,
+                            device=device,
+                            steps=args.sample_steps
+                        )
+                    
+                    grid = to_grid(gen_imgs, nrow=4)
+                    save_path = output_dir / f"samples_step{global_step:06d}.png"
+                    grid.save(save_path)
+                    
+                    if wandb.run is not None:
+                        wandb.log({"samples_ldm": wandb.Image(grid)}, step=global_step)
+                unet.train()
+
+            # FID Evaluation
+            if (args.fid_interval > 0) and (global_step % args.fid_interval == 0):
+                if num_test_imgs > 0:
+                    compute_fid(
+                        unet, vae, ddim_scheduler, args, device, global_step, 
+                        fid_real_cache, num_test_imgs, latent_shape
+                    )
 
             # Checkpointing
             if (args.save_interval > 0) and (global_step % args.save_interval == 0):
-                save_path = output_dir / f"checkpoint-{global_step}"
-                model.save_pretrained(save_path)
-                print(f"Saved model to {save_path}")
+                save_path = output_dir / f"unet_step{global_step:06d}"
+                unet.save_pretrained(save_path)
+                print(f"Saved UNet to {save_path}")
 
     # Final Save
-    final_path = output_dir / "final_model"
-    model.save_pretrained(final_path)
-    print(f"Training Done. Saved final model to {final_path}")
+    final_path = output_dir / "final_unet"
+    unet.save_pretrained(final_path)
+    print(f"Training Done. Saved final UNet to {final_path}")
     
-    # Final Eval
-    if test_dl1:
-        evaluate_reconstruction(model, test_dl1, device, global_step, output_dir, "dataset1", args.mixed_precision)
-    if test_dl2:
-        evaluate_reconstruction(model, test_dl2, device, global_step, output_dir, "dataset2", args.mixed_precision)
-    
+    if num_test_imgs > 0:
+        compute_fid(unet, vae, ddim_scheduler, args, device, global_step, fid_real_cache, num_test_imgs, latent_shape)
+
     wandb.finish()
 
 
 # ------------------------- Arguments -------------------------
 
-DATE=1226
-B=64
+DATE=1227
+B=256
 LR=1e-4
-KL_W=1e-8
-CUDA_NUM=7
+CUDA_NUM=3
+
+# [USER REQUIRED] VAE 경로와 Scale Factor를 설정하세요.
+# LATENT_SCALE = 1.0 / (VAE 학습 시의 z_std)
+LATENT_SCALE = 1 / 2.4774
+VAE_CHECKPOINT = "1227_b64_lr0.0001_MSE_klW_1e-08_block_64_128-checkpoint-1000000" # 수정 필요
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="VAE Training Single GPU (2 Datasets Eval + Latent Stats)")
+    parser = argparse.ArgumentParser(description="LDM Training Single GPU")
     parser.add_argument("--device", type=str, default=f"cuda:{CUDA_NUM}")
     
+    # Paths
+    parser.add_argument("--vae_path", type=str, default=VAE_CHECKPOINT, help="Path to pretrained VAE folder")
     parser.add_argument("--train_dir", type=str, default="cifar10_png_linear_only/rgb/train")
-    parser.add_argument("--test_dir1", type=str, default="cifar10_png_linear_only/rgb/test", help="First test dataset")
-    parser.add_argument("--test_dir2", type=str, default="cifar10_png_linear_only/gray3/test", help="Second test dataset (optional)")
-
-    parser.add_argument("--output_dir", type=str, default=f"vae_out_dir/{DATE}_b{B}_lr{LR}_MSE_klW_{KL_W}_block_64_128")    
-    parser.add_argument("--project", type=str, default=f"vae_training_{DATE}")
-    parser.add_argument("--run_name", type=str, default=f"vae_b{B}_lr{LR}_MSE_klW_{KL_W}_64_128")
+    # parser.add_argument("--train_dir", type=str, default="cifar10_student_data_n100/gray3/train")
+    parser.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/rgb/test", help="For FID")
+    parser.add_argument("--output_dir", type=str, default=f"ldm_out_dir/{DATE}_cifar10_attn_unet_128_256_b{B}_lr{LR}")
     
-    parser.add_argument("--epochs", type=int, default=1000)
+    # WandB
+    parser.add_argument("--project", type=str, default=f"ddpm-attn-cifar10-{DATE}")
+    parser.add_argument("--run_name", type=str, default=f"ldm_attn_128_256_cifar10_b{B}lr{LR}")
+
+    # Training
+    parser.add_argument("--epochs", type=int, default=10000)
     parser.add_argument("--batch_size", type=int, default=B)
     parser.add_argument("--lr", type=float, default=LR)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument("--max_grad_norm", type=float, default=1.0)
     parser.add_argument("--mixed_precision", type=str, default="fp16", choices=["no", "fp16"])
+    parser.add_argument("--train_timesteps", type=int, default=400)
+    parser.add_argument("--beta_schedule", type=str, default="linear")
 
-    # Model Config
-    parser.add_argument("--image_size", type=int, default=32)
-    parser.add_argument("--latent_channels", type=int, default=4)
-    parser.add_argument("--model_channels", type=int, nargs="+", default=[64, 128])
-    # parser.add_argument("--model_channels", type=int, nargs="+", default=[64, 128, 256])
-    # parser.add_argument("--model_channels", type=int, nargs="+", default=[32, 64])
+    # Latent / VAE Config
+    parser.add_argument("--image_size", type=int, default=32, help="Pixel image size")
+    parser.add_argument("--latent_scale_factor", type=float, default=LATENT_SCALE, help="Scaling factor for latents (1/z_std)")
     
-    parser.add_argument("--kl_weight", type=float, default=KL_W)
+    # UNet Config (Optimized for 16x16 Latent)
+    # [128, 256, 256] corresponds to:
+    # 16x16 -> (Down) -> 8x8 -> (Down) -> 4x4 -> (Down) -> 2x2 (Bottleneck)
+    # This is safe and effective for small resolution.
+    parser.add_argument("--unet_channels", type=int, nargs="+", default=[128, 256, 256], help="UNet channels")
+
+    # Sampling / FID
+    parser.add_argument("--sample_steps", type=int, default=50)
+    parser.add_argument("--sample_eta", type=float, default=0.0)
+    parser.add_argument("--sample_interval", type=int, default=5000)
+    parser.add_argument("--fid_interval", type=int, default=5000)
+    parser.add_argument("--save_interval", type=int, default=5000)
+    parser.add_argument("--disable_fid", action="store_true")
+    parser.add_argument("--fid_batch_size", type=int, default=64)
+    parser.add_argument("--fid_gen_batch", type=int, default=256)
+    parser.add_argument("--fid_dims", type=int, default=2048)
+    parser.add_argument("--fid_keep_gen", action="store_true")
+
+    # Data
     parser.add_argument("--no_hflip", action="store_true")
     parser.add_argument("--center_crop", action="store_true")
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
     
     parser.add_argument("--log_interval", type=int, default=100)
-    parser.add_argument("--eval_interval", type=int, default=1000)
-    parser.add_argument("--save_interval", type=int, default=1000)
 
     return parser.parse_args()
 
