@@ -834,17 +834,37 @@ def train(args):
         student_dir = Path(args.student_dir)
         student = UNet2DModel.from_pretrained(student_dir.as_posix()).to(device)
     else:
+        # student = UNet2DModel(
+        #     sample_size=args.image_size,
+        #     in_channels=3,
+        #     out_channels=3,
+        #     block_out_channels=tuple(args.student_channels),
+        #     down_block_types=("DownBlock2D",) * len(args.student_channels),
+        #     up_block_types=("UpBlock2D",) * len(args.student_channels),
+        #     layers_per_block=args.layers_per_block,
+        #     norm_num_groups=args.norm_num_groups,
+        #     attention_head_dim=None,
+        # ).to(device)
         student = UNet2DModel(
             sample_size=args.image_size,
             in_channels=3,
             out_channels=3,
-            block_out_channels=tuple(args.student_channels),
-            down_block_types=("DownBlock2D",) * len(args.student_channels),
-            up_block_types=("UpBlock2D",) * len(args.student_channels),
-            layers_per_block=args.layers_per_block,
+            layers_per_block=2,
+            block_out_channels=tuple(args.model_channels),
+            down_block_types=(
+                "DownBlock2D",      # 16x16 -> 8x8 (여기선 CNN만 써서 특징 추출)
+                "AttnDownBlock2D",  # 8x8 -> 4x4   (Self-Attention 추가)
+                "AttnDownBlock2D",  # 4x4 -> 2x2   (Self-Attention 추가)
+            ),
+            up_block_types=(
+                "AttnUpBlock2D",    # 2x2 -> 4x4
+                "AttnUpBlock2D",    # 4x4 -> 8x8
+                "UpBlock2D",        # 8x8 -> 16x16
+            ),
             norm_num_groups=args.norm_num_groups,
-            attention_head_dim=None,
-        ).to(device)
+        )
+
+
 
     student.train()
     for p in student.parameters():
@@ -996,24 +1016,24 @@ def train(args):
 
 BATCH_SIZE = 8
 CLASSN = 100
-RKD_METRIC="clip" # pixel inception clip
-CUDA_NUM = 5
+RKD_METRIC="pixel" # pixel inception clip
+CUDA_NUM = 4
 LR=1e-5
 
-RKD_W = 0.1#0.1
-INV_W = 0.1#0.1
-INVINV_W = 1.0#1.0
+RKD_W = 0.1
+INV_W = 0.1
+INVINV_W = 1.0
 FD_W = 0.0001
-SAME_W = 0.1#0.01
+SAME_W = 0.1
 
 def build_argparser():
     p = argparse.ArgumentParser("Student x0 distillation with Feature-based losses")
 
     p.add_argument("--student_data_dir", type=str, default="cifar10_student_data_n100/gray3/train")
     p.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test")
-    p.add_argument("--teacher_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
-    p.add_argument("--student_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
-    p.add_argument("--output_dir", type=str, default=f"out_1226_rkd_{RKD_METRIC}_feature_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}_LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
+    p.add_argument("--teacher_dir", type=str, default="ddpm_attn_cifar10_rgb_T400_DDIM50/ckpt_step150000")
+    p.add_argument("--student_dir", type=str, default="ddpm_attn_cifar10_rgb_T400_DDIM50/ckpt_step150000")
+    p.add_argument("--output_dir", type=str, default=f"out_1227_rkd_{RKD_METRIC}_attn_feature_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}_LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
 
     # Metric Selection for RKD/INV
     p.add_argument("--rkd_metric", type=str, default=RKD_METRIC, choices=["pixel", "inception", "clip"], 
@@ -1022,8 +1042,8 @@ def build_argparser():
                    help="HuggingFace model name for CLIP if rkd_metric='clip'")
 
     p.add_argument("--device", type=str, default=f"cuda:{CUDA_NUM}")
-    p.add_argument("--project", type=str, default="rkd-feature-cifar10-rgb-to-gray-1226")
-    p.add_argument("--run_name", type=str, default=f"student-{RKD_METRIC}-x0-pixel-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
+    p.add_argument("--project", type=str, default="rkd-feature-cifar10-rgb-to-gray-1227")
+    p.add_argument("--run_name", type=str, default=f"student-{RKD_METRIC}-attn-x0-pixel-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
     p.add_argument("--wandb_offline", action="store_true")
     p.add_argument("--mixed_precision", type=str, default="fp16", choices=["no", "fp16", "bf16"])
 
