@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Train a Latent Diffusion Model (LDM) on a Single GPU.
-Optimized for 16x16 Latent Space (from 32x32 Image / f=2 VAE).
+Train LDM with LoRA (Low-Rank Adaptation) on a Single GPU.
+Loads a pre-trained Latent UNet, freezes it, injects LoRA using peft.get_peft_model,
+and trains only LoRA weights.
 """
 
 import os
@@ -24,6 +25,7 @@ import torchvision.utils as vutils
 
 import wandb
 from diffusers import UNet2DModel, DDPMScheduler, DDIMScheduler, AutoencoderKL
+from peft import LoraConfig, get_peft_model, PeftModel
 
 # ------------------------- Utils -------------------------
 
@@ -35,6 +37,9 @@ def set_seed(seed: int):
         torch.cuda.manual_seed_all(seed)
 
 def count_parameters(model) -> int:
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+def count_total_parameters(model) -> int:
     return sum(p.numel() for p in model.parameters())
 
 def to_grid(images: torch.Tensor, nrow: int = 8) -> Image.Image:
@@ -85,8 +90,7 @@ def save_tensor_batch_to_dir(x: torch.Tensor, out_dir: Path, start_idx: int):
 class ImageFolderDataset(Dataset):
     def __init__(self, root: str, image_size: int = 32, center_crop: bool = False, horizontal_flip: bool = True):
         self.root = Path(root)
-        exts = {".png", ".jpg", ".jpeg"}
-        self.files = [p for p in self.root.rglob("*") if p.suffix.lower() in exts]
+        self.files = [p for p in self.root.rglob("*") if p.suffix.lower() in {".png", ".jpg", ".jpeg"}]
         if len(self.files) == 0:
             print(f"[Warning] No images found under {self.root}")
         
@@ -124,6 +128,7 @@ def sample_ldm_ddim(
     eta: float = 0.0,
     generator: Optional[torch.Generator] = None,
 ) -> torch.Tensor:
+    # UNet이 PEFT 모델일 경우 eval 모드 전환이 중요
     unet.eval()
     vae.eval()
     
@@ -133,6 +138,7 @@ def sample_ldm_ddim(
     z = torch.randn((num_images, *latent_shape), device=device, generator=generator)
 
     for t in ddim_scheduler.timesteps:
+        # LoRA가 적용된 모델은 forward 시 자동으로 어댑터 사용
         noise_pred = unet(z, t).sample
         z = ddim_scheduler.step(noise_pred, t, z, eta=eta, generator=generator).prev_sample
 
@@ -247,63 +253,68 @@ def train(args):
     latent_shape = dummy_z.shape[1:] # (C, H, W)
     print(f"[Info] Latent Shape determined: {latent_shape} (from {args.image_size}x{args.image_size} input)")
     
-    # # 2. Setup LDM UNet
-    # print(f"[Info] Initializing UNet for Latent Space...")
-    # unet = UNet2DModel(
-    #     sample_size=latent_shape[1],  
-    #     in_channels=latent_shape[0],  
-    #     out_channels=latent_shape[0], 
-    #     layers_per_block=2,
-    #     block_out_channels=tuple(args.unet_channels),
-    #     down_block_types=("DownBlock2D",) * len(args.unet_channels),
-    #     up_block_types=("UpBlock2D",) * len(args.unet_channels),
-    #     norm_num_groups=32,
-    # )
+    # 2. Load Pretrained UNet (Base Model)
+    print(f"[Info] Loading Pretrained UNet from {args.pretrained_unet_path} ...")
+    try:
+        # subfolder 옵션 자동 체크 (폴더 구조에 따라 다름)
+        if (Path(args.pretrained_unet_path) / "unet").exists():
+             unet = UNet2DModel.from_pretrained(args.pretrained_unet_path, subfolder="unet")
+        else:
+             unet = UNet2DModel.from_pretrained(args.pretrained_unet_path)
+    except OSError:
+        print("[Error] Could not load UNet. Check path.")
+        return
 
-    # 2. Setup LDM UNet (Attention 적용 버전)
-    print(f"[Info] Initializing UNet with Attention...")
-    unet = UNet2DModel(
-        sample_size=latent_shape[1],  # 16
-        in_channels=latent_shape[0],  # Latent Channel (보통 4)
-        out_channels=latent_shape[0], 
-        layers_per_block=2,
-        block_out_channels=tuple(args.unet_channels),
-
-        # 얕은 층은 DownBlock, 깊은 층(해상도 낮은 곳)은 AttnDownBlock 사용
-        down_block_types=(
-            "DownBlock2D",      # 16x16 -> 8x8 (여기선 CNN만 써서 특징 추출)
-            "AttnDownBlock2D",  # 8x8 -> 4x4   (Self-Attention 추가)
-            "AttnDownBlock2D",  # 4x4 -> 2x2   (Self-Attention 추가)
-        ),
-        up_block_types=(
-            "AttnUpBlock2D",    # 2x2 -> 4x4
-            "AttnUpBlock2D",    # 4x4 -> 8x8
-            "UpBlock2D",        # 8x8 -> 16x16
-        ),
-        norm_num_groups=32,
+    # 3. Inject LoRA using get_peft_model (Fixes AttributeError)
+    print(f"[Info] Injecting LoRA adapters (rank={args.lora_rank})...")
+    
+    # 1) Base Model Freeze
+    unet.requires_grad_(False) 
+    
+    # 2) Config
+    lora_config = LoraConfig(
+        r=args.lora_rank,
+        lora_alpha=args.lora_alpha,
+        init_lora_weights="gaussian",
+        target_modules=["to_q", "to_k", "to_v", "to_out.0"], # Attention Modules in Diffusers UNet
     )
-
-
+    
+    # 3) Wrap Model (Replaces unet.add_adapter)
+    unet = get_peft_model(unet, lora_config)
+    
     unet.to(device)
-    print(f"[Info] UNet Parameters: {count_parameters(unet):,}")
+    
+    total_params = count_total_parameters(unet)
+    trainable_params = count_parameters(unet)
+    print(f"[Info] Total Params: {total_params:,} | Trainable (LoRA) Params: {trainable_params:,} ({trainable_params/total_params:.2%})")
 
-    # 3. Schedulers
-    noise_scheduler = DDPMScheduler(
-        num_train_timesteps=args.train_timesteps,
-        beta_schedule=args.beta_schedule,
-        prediction_type="epsilon",
-    )
+    # 4. Schedulers
+    try:
+        noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_unet_path, subfolder="scheduler")
+    except:
+        print("[Warn] Scheduler not found in pretrained path, creating new one.")
+        noise_scheduler = DDPMScheduler(
+            num_train_timesteps=args.train_timesteps,
+            beta_schedule=args.beta_schedule,
+            prediction_type="epsilon",
+        )
     ddim_scheduler = DDIMScheduler.from_config(noise_scheduler.config)
 
-    # 4. Optimizer
-    optimizer = torch.optim.AdamW(unet.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    # 5. Optimizer (Only LoRA Params)
+    # Using filter to ensure only trainable params are passed
+    optimizer = torch.optim.AdamW(
+        filter(lambda p: p.requires_grad, unet.parameters()), 
+        lr=args.lr, 
+        weight_decay=args.weight_decay
+    )
+    
     scaler = torch.amp.GradScaler('cuda', enabled=(args.mixed_precision == "fp16"))
 
-    # 5. Data Loader
+    # 6. Data Loader
     train_ds = ImageFolderDataset(args.train_dir, args.image_size, args.center_crop, not args.no_hflip)
     train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, drop_last=True, pin_memory=True)
     
-    # 6. FID Cache
+    # 7. FID Cache
     fid_real_cache = Path(args.output_dir) / "fid_real_cache"
     num_test_imgs = 0
     if not args.disable_fid and args.test_dir:
@@ -311,7 +322,7 @@ def train(args):
     
     # --- Training Loop ---
     global_step = 0
-    print(f"[Info] Start Training LDM... Epochs: {args.epochs}")
+    print(f"[Info] Start Training LDM LoRA... Epochs: {args.epochs}")
 
     for epoch in range(1, args.epochs + 1):
         unet.train()
@@ -336,7 +347,7 @@ def train(args):
                 
                 noisy_z = noise_scheduler.add_noise(z, noise, timesteps)
 
-                # D. Predict Noise
+                # D. Predict Noise (Forward pass through LoRA-injected UNet)
                 noise_pred = unet(noisy_z, timesteps).sample
 
                 # E. Loss
@@ -364,25 +375,21 @@ def train(args):
 
             # Preview Sampling
             if (args.sample_interval > 0) and (global_step % args.sample_interval == 0):
-                unet.eval() 
-                with torch.no_grad():
-                    with torch.amp.autocast('cuda', enabled=(args.mixed_precision == "fp16")):
-                        gen_imgs = sample_ldm_ddim(
-                            unet, vae, ddim_scheduler,
-                            num_images=16,
-                            latent_shape=latent_shape,
-                            scale_factor=args.latent_scale_factor,
-                            device=device,
-                            steps=args.sample_steps
-                        )
-                    
-                    grid = to_grid(gen_imgs, nrow=4)
-                    save_path = output_dir / f"samples_step{global_step:06d}.png"
-                    grid.save(save_path)
-                    
-                    if wandb.run is not None:
-                        wandb.log({"samples_ldm": wandb.Image(grid)}, step=global_step)
-                unet.train()
+                gen_imgs = sample_ldm_ddim(
+                    unet, vae, ddim_scheduler,
+                    num_images=16,
+                    latent_shape=latent_shape,
+                    scale_factor=args.latent_scale_factor,
+                    device=device,
+                    steps=args.sample_steps
+                )
+                
+                grid = to_grid(gen_imgs, nrow=4)
+                save_path = output_dir / f"samples_step{global_step:06d}.png"
+                grid.save(save_path)
+                
+                if wandb.run is not None:
+                    wandb.log({"samples_ldm": wandb.Image(grid)}, step=global_step)
 
             # FID Evaluation
             if (args.fid_interval > 0) and (global_step % args.fid_interval == 0):
@@ -392,16 +399,16 @@ def train(args):
                         fid_real_cache, num_test_imgs, latent_shape
                     )
 
-            # Checkpointing
+            # Checkpointing (Save LoRA Weights Only)
             if (args.save_interval > 0) and (global_step % args.save_interval == 0):
-                save_path = output_dir / f"unet_step{global_step:06d}"
-                unet.save_pretrained(save_path)
-                print(f"Saved UNet to {save_path}")
+                save_path = output_dir / f"lora_step{global_step:06d}"
+                unet.save_pretrained(save_path) # PEFT 모델은 Adapter만 저장함
+                print(f"Saved LoRA adapters to {save_path}")
 
     # Final Save
-    final_path = output_dir / "final_unet"
+    final_path = output_dir / "final_lora"
     unet.save_pretrained(final_path)
-    print(f"Training Done. Saved final UNet to {final_path}")
+    print(f"Training Done. Saved final LoRA to {final_path}")
     
     if num_test_imgs > 0:
         compute_fid(unet, vae, ddim_scheduler, args, device, global_step, fid_real_cache, num_test_imgs, latent_shape)
@@ -412,32 +419,38 @@ def train(args):
 # ------------------------- Arguments -------------------------
 
 DATE=1227
-B=256
+B=128
 LR=1e-4
 CUDA_NUM=7
 
-# [USER REQUIRED] VAE 경로와 Scale Factor를 설정하세요.
-# LATENT_SCALE = 1.0 / (VAE 학습 시의 z_std)
+# [USER REQUIRED] VAE 및 Pretrained UNet 경로 설정
 LATENT_SCALE = 1 / 2.4774
-VAE_CHECKPOINT = "1227_b64_lr0.0001_MSE_klW_1e-08_block_64_128-checkpoint-1000000" # 수정 필요
+VAE_CHECKPOINT = "1227_b64_lr0.0001_MSE_klW_1e-08_block_64_128-checkpoint-1000000" # VAE 경로
+PRETRAINED_UNET = "ldm_out_dir/1227_cifar10_attn_unet_64_128_b256_lr0.0001_rgb/unet_step060000" # 학습된 LDM 경로
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="LDM Training Single GPU")
+    parser = argparse.ArgumentParser(description="LDM LoRA Training Single GPU")
     parser.add_argument("--device", type=str, default=f"cuda:{CUDA_NUM}")
     
     # Paths
     parser.add_argument("--vae_path", type=str, default=VAE_CHECKPOINT, help="Path to pretrained VAE folder")
-    parser.add_argument("--train_dir", type=str, default="cifar10_png_linear_only/rgb/train")
-    # parser.add_argument("--train_dir", type=str, default="cifar10_student_data_n100/gray3/train")
-    parser.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/rgb/test", help="For FID")
-    parser.add_argument("--output_dir", type=str, default=f"ldm_out_dir/{DATE}_cifar10_attn_unet_64_128_b{B}_lr{LR}_rgb")
+    parser.add_argument("--pretrained_unet_path", type=str, default=PRETRAINED_UNET, help="Path to pretrained UNet folder")
     
+    # parser.add_argument("--train_dir", type=str, default="cifar10_png_linear_only/gray3/train")
+    parser.add_argument("--train_dir", type=str, default="cifar10_student_data_n100/gray3/train")
+    parser.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test", help="For FID")
+    parser.add_argument("--output_dir", type=str, default=f"ldm_lora_out/{DATE}_cifar10_lora_r16_a16_lr{LR}")
+    
+    # LoRA Config
+    parser.add_argument("--lora_rank", type=int, default=16)
+    parser.add_argument("--lora_alpha", type=int, default=16)
+
     # WandB
-    parser.add_argument("--project", type=str, default=f"ddpm-attn-cifar10-{DATE}")
-    parser.add_argument("--run_name", type=str, default=f"ldm_attn_64_128_cifar10_b{B}lr{LR}_gray3_rgb")
+    parser.add_argument("--project", type=str, default="ddpm-attn-cifar10-1227", help="W&B project name")
+    parser.add_argument("--run_name", type=str, default=f"ldm-attn-LoRA_r16_a16_-b{B}-lr{LR}", help="W&B run name")
 
     # Training
-    parser.add_argument("--epochs", type=int, default=100000)
+    parser.add_argument("--epochs", type=int, default=10000)
     parser.add_argument("--batch_size", type=int, default=B)
     parser.add_argument("--lr", type=float, default=LR)
     parser.add_argument("--weight_decay", type=float, default=0.0)
@@ -450,12 +463,6 @@ def parse_args():
     parser.add_argument("--image_size", type=int, default=32, help="Pixel image size")
     parser.add_argument("--latent_scale_factor", type=float, default=LATENT_SCALE, help="Scaling factor for latents (1/z_std)")
     
-    # UNet Config (Optimized for 16x16 Latent)
-    # [128, 256, 256] corresponds to:
-    # 16x16 -> (Down) -> 8x8 -> (Down) -> 4x4 -> (Down) -> 2x2 (Bottleneck)
-    # This is safe and effective for small resolution.
-    parser.add_argument("--unet_channels", type=int, nargs="+", default=[128, 256, 256], help="UNet channels")
-
     # Sampling / FID
     parser.add_argument("--sample_steps", type=int, default=50)
     parser.add_argument("--sample_eta", type=float, default=0.0)

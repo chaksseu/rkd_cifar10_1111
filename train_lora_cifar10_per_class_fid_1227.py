@@ -2,15 +2,14 @@
 # -*- coding: utf-8 -*-
 """
 Fine-tune a pre-trained DDPM using LoRA (Low-Rank Adaptation) with Hugging Face Accelerate.
-Loads a pre-trained UNet, freezes it, injects LoRA layers, and trains only the LoRA weights on new data.
+Loads a pre-trained UNet, freezes it, injects LoRA layers using peft.get_peft_model,
+and trains only the LoRA weights on new data.
 
 Dependencies:
   pip install diffusers accelerate torch torchvision peft
 """
 
 import os
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # 필요 시 주석 해제
-
 import math
 import argparse
 import shutil
@@ -68,7 +67,10 @@ def flatten_real_cache(test_dir: Path, cache_dir: Path, accelerator: Accelerator
     for i, src in enumerate(paths, 1):
         dst = cache_dir / f"real_{i:06d}{src.suffix.lower()}"
         try:
-            os.symlink(src.resolve(), dst)
+            if hasattr(os, 'symlink'):
+                os.symlink(src.resolve(), dst)
+            else:
+                shutil.copy2(src, dst)
         except Exception:
             shutil.copy2(src, dst)
     return len(paths)
@@ -206,6 +208,7 @@ def compute_and_log_fid(
 # ------------------------- Training -------------------------
 
 def train(args):
+    # args.cuda_num이 설정되어 있으므로 Accelerator가 해당 디바이스를 자동으로 잡습니다 (main에서 세팅됨)
     torch.backends.cudnn.benchmark = True
     ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=False)
 
@@ -228,14 +231,10 @@ def train(args):
     )
 
     device = accelerator.device
-    accelerator.print(f"[Info] Device: {device} | LoRA Rank: {args.lora_rank}")
+    accelerator.print(f"[Info] Accelerator Device: {device} (Physical GPU: {args.cuda_num}) | LoRA Rank: {args.lora_rank}")
 
     # 1. Load Pre-trained Base Model
     accelerator.print(f"[Info] Loading pre-trained model from {args.pretrained_model_path} ...")
-    # 기존 코드에서 저장된 방식(폴더 구조)에 따라 로드
-    # 보통 diffusers 포맷으로 저장했다면 폴더 경로를 넣으면 됩니다.
-    # 만약 체크포인트가 .pt 파일 등이면 로직을 변경해야 합니다.
-    # 여기서는 diffusers의 save_pretrained로 저장된 폴더를 가정합니다.
     try:
         base_model = UNet2DModel.from_pretrained(args.pretrained_model_path)
     except Exception:
@@ -248,25 +247,29 @@ def train(args):
         else:
             raise ValueError("Cannot load pre-trained UNet.")
 
-    # 2. Freeze Base Model
+    # 2. Inject LoRA using get_peft_model
+    accelerator.print("[Info] Injecting LoRA adapters...")
+    
+    # 1) Base Model Freeze
     base_model.requires_grad_(False)
     
-    # 3. Inject LoRA Configuration
-    accelerator.print("[Info] Injecting LoRA adapters...")
+    # 2) Config
     lora_config = LoraConfig(
         r=args.lora_rank,
         lora_alpha=args.lora_alpha,
         target_modules=["to_q", "to_k", "to_v", "to_out.0"], # Attention 레이어 타겟팅
         init_lora_weights="gaussian",
     )
-    # diffusers 모델에 LoRA 어댑터 추가 (peft 라이브러리 활용)
-    base_model.add_adapter(lora_config)
     
-    # 4. Prepare for training (LoRA params only)
-    # LoRA 파라미터만 requires_grad=True 상태인지 확인
-    lora_params = list(filter(lambda p: p.requires_grad, base_model.parameters()))
-    accelerator.print(f"[Info] Total Params: {count_total_parameters(base_model):,}")
-    accelerator.print(f"[Info] Trainable (LoRA) Params: {count_parameters(base_model):,}")
+    # 3) Wrap Model (Replaces add_adapter)
+    # This creates a PeftModel where only LoRA params are trainable
+    model = get_peft_model(base_model, lora_config)
+    
+    # 4. Check Parameters
+    trainable_params = count_parameters(model)
+    total_params = count_total_parameters(model)
+    accelerator.print(f"[Info] Total Params: {total_params:,}")
+    accelerator.print(f"[Info] Trainable (LoRA) Params: {trainable_params:,} ({trainable_params/total_params:.2%})")
 
     # 5. Dataset (New Data for Fine-tuning)
     dataset = ImageFolderDataset(
@@ -294,6 +297,8 @@ def train(args):
     accelerator.wait_for_everyone()
 
     # 7. Optimizer (Only optimize LoRA params)
+    # Use filter just to be safe, though PeftModel should handle it
+    lora_params = filter(lambda p: p.requires_grad, model.parameters())
     optimizer = torch.optim.AdamW(lora_params, lr=args.lr, weight_decay=args.weight_decay)
 
     # 8. Schedulers (Load from pretrained if possible, or create new compatible one)
@@ -308,8 +313,9 @@ def train(args):
     ddim_scheduler = DDIMScheduler.from_config(noise_scheduler.config)
 
     # 9. Prepare with Accelerator
-    # base_model은 이미 LoRA가 붙은 상태
-    model, optimizer, loader = accelerator.prepare(base_model, optimizer, loader)
+    # Wrap model/opt/loader with accelerator
+    # Note: 'model' is already the PEFT wrapped model
+    model, optimizer, loader = accelerator.prepare(model, optimizer, loader)
 
     global_step = 0
 
@@ -350,7 +356,7 @@ def train(args):
                 if (args.sample_interval > 0) and (global_step % args.sample_interval == 0):
                     accelerator.wait_for_everyone()
                     if accelerator.is_main_process:
-                        # LoRA가 적용된 모델 상태로 언랩
+                        # Unwrap PEFT model for sampling
                         unwrapped = accelerator.unwrap_model(model)
                         
                         # Preview
@@ -408,27 +414,33 @@ def train(args):
 DATE=1227
 B=256
 LR=1e-4
-CUDA_NUM=7
+CUDA_NUM=7  # Default
+
+TT=400 
+DDIM_STEPS=50
 
 def build_argparser():
     p = argparse.ArgumentParser(description="LoRA Fine-tuning of DDPM")
     
+    # Device
+    p.add_argument("--cuda_num", type=str, default=str(CUDA_NUM), help="GPU ID to use (e.g. '0' or '7')")
+
     # Model Loading (Base Model)
-    p.add_argument("--pretrained_model_path", type=str, default="ddpm_attn_cifar10_rgb_T400_DDIM50/ckpt_step100000", 
+    p.add_argument("--pretrained_model_path", type=str, default="ddpm_attn_cifar10_rgb_T400_DDIM50/ckpt_step055000", 
                    help="Path to the folder containing the pre-trained UNet and scheduler (e.g. ./ddpm_cifar10/final)")
     
     # LoRA Config
-    p.add_argument("--lora_rank", type=int, default=8, help="Rank of LoRA update matrices")
-    p.add_argument("--lora_alpha", type=int, default=8, help="LoRA scaling factor")
+    p.add_argument("--lora_rank", type=int, default=16, help="Rank of LoRA update matrices")
+    p.add_argument("--lora_alpha", type=int, default=16, help="LoRA scaling factor")
 
     # Data (New Dataset)
     p.add_argument("--train_dir", type=str, default="cifar10_student_data_n100/gray3/train", help="Path to NEW training data")
     p.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test", help="Path to NEW test data (for FID)")
     
     # Training Config
-    p.add_argument("--output_dir", type=str, default=f"./ddpm_attn_LoRA_cifar10_rgb_T{TT}_DDIM{DDIM_STEPS}", help="Where to save checkpoints & final model")
+    p.add_argument("--output_dir", type=str, default=f"./ddpm_attn_LoRA_r16_a16_cifar10_rgb_T{TT}_DDIM{DDIM_STEPS}", help="Where to save checkpoints & final model")
     p.add_argument("--project", type=str, default="ddpm-attn-cifar10-1227", help="W&B project name")
-    p.add_argument("--run_name", type=str, default=f"ddpm-attn-LoRA-b{B}-lr{LR}", help="W&B run name")
+    p.add_argument("--run_name", type=str, default=f"ddpm-attn-LoRA_r16_a16_-b{B}-lr{LR}", help="W&B run name")
     p.add_argument("--wandb_offline", action="store_true")
     
     p.add_argument("--epochs", type=int, default=10000)
@@ -467,5 +479,9 @@ def build_argparser():
 
 if __name__ == "__main__":
     args = build_argparser().parse_args()
+    
+    # Set CUDA device before accelerator init
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(args.cuda_num)
+    
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     train(args)
