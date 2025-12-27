@@ -996,15 +996,15 @@ def train(args):
 
 BATCH_SIZE = 8
 CLASSN = 100
-RKD_METRIC="clip" # pixel inception clip
-CUDA_NUM = 4
+RKD_METRIC="inception" # pixel inception clip
+CUDA_NUM = 5
 LR=1e-5
 
-RKD_W = 1.0#0.1
-INV_W = 1.0#0.1
+RKD_W = 0.1#0.1
+INV_W = 0.1#0.1
 INVINV_W = 1.0#1.0
-FD_W = 0.000005
-SAME_W = 1.0#0.01
+FD_W = 0.0001
+SAME_W = 0.1#0.01
 
 def build_argparser():
     p = argparse.ArgumentParser("Student x0 distillation with Feature-based losses")
