@@ -9,7 +9,7 @@ from pathlib import Path
 SOURCE_ROOT = 'cifar10_png_linear_only'
 
 # 2. 클래스 당 추출할 이미지 개수 (N개)
-SAMPLES_PER_CLASS = 100
+SAMPLES_PER_CLASS = 10
 
 # 3. 새로운 데이터가 저장될 경로
 OUTPUT_ROOT = f'cifar10_student_data_n{SAMPLES_PER_CLASS}'

@@ -2,13 +2,10 @@
 # -*- coding: utf-8 -*-
 """
 Train a Latent Diffusion Model (LDM) on a Single GPU.
-Uses a Pretrained Frozen VAE.
-Logs losses, latent stats, and samples (decoded) to WandB.
-Computes FID between Real Images and Decoded Samples.
+Optimized for 16x16 Latent Space (from 32x32 Image / f=2 VAE).
 """
 
 import os
-import math
 import argparse
 import shutil
 from pathlib import Path
@@ -65,7 +62,10 @@ def flatten_real_cache(test_dir: Path, cache_dir: Path) -> int:
     for i, src in enumerate(paths, 1):
         dst = cache_dir / f"real_{i:06d}{src.suffix.lower()}"
         try:
-            os.symlink(src.resolve(), dst)
+            if hasattr(os, 'symlink'):
+                os.symlink(src.resolve(), dst)
+            else:
+                shutil.copy2(src, dst)
         except Exception:
             shutil.copy2(src, dst)
     return len(paths)
@@ -124,34 +124,24 @@ def sample_ldm_ddim(
     eta: float = 0.0,
     generator: Optional[torch.Generator] = None,
 ) -> torch.Tensor:
-    """
-    1. Sample noise in Latent Space
-    2. Denoise with UNet
-    3. Decode with VAE
-    """
     unet.eval()
     vae.eval()
     
     ddim_scheduler.set_timesteps(steps, device=device)
     
-    # 1. Start with random latent noise
-    # latent_shape ex: (4, 4, 4) for 32x32 image with f=8 VAE
+    # Start with random latent noise
     z = torch.randn((num_images, *latent_shape), device=device, generator=generator)
 
-    # 2. Denoise Loop (in Latent Space)
     for t in ddim_scheduler.timesteps:
-        # Predict noise
         noise_pred = unet(z, t).sample
-        # Step
         z = ddim_scheduler.step(noise_pred, t, z, eta=eta, generator=generator).prev_sample
 
-    # 3. Decode to Pixel Space
-    # Rescale back: z / scale_factor
+    # Rescale back and Decode
     z = z / scale_factor
     images = vae.decode(z).sample
 
     unet.train()
-    return images  # [-1, 1]
+    return images
 
 
 # ------------------------- FID -------------------------
@@ -207,16 +197,19 @@ def compute_fid(
         remaining -= cur
 
     print(f"[FID] Computing FID against {real_cache_dir} ...")
-    fid_score = calculate_fid_given_paths(
-        [real_cache_dir.as_posix(), gen_dir.as_posix()],
-        batch_size=args.fid_batch_size,
-        device=device,
-        dims=args.fid_dims,
-    )
-    print(f"[FID] Step={global_step} FID={fid_score:.4f}")
-    
-    if wandb.run is not None:
-        wandb.log({"metrics/fid": fid_score}, step=global_step)
+    try:
+        fid_score = calculate_fid_given_paths(
+            [real_cache_dir.as_posix(), gen_dir.as_posix()],
+            batch_size=args.fid_batch_size,
+            device=device,
+            dims=args.fid_dims,
+        )
+        print(f"[FID] Step={global_step} FID={fid_score:.4f}")
+        
+        if wandb.run is not None:
+            wandb.log({"metrics/fid": fid_score}, step=global_step)
+    except Exception as e:
+        print(f"[FID Error] {e}")
 
     if not args.fid_keep_gen:
         shutil.rmtree(gen_dir, ignore_errors=True)
@@ -225,9 +218,6 @@ def compute_fid(
 # ------------------------- Training -------------------------
 
 def train(args):
-    import random
-    import numpy as np
-    
     set_seed(args.seed)
     
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
@@ -243,45 +233,58 @@ def train(args):
     try:
         vae = AutoencoderKL.from_pretrained(args.vae_path)
     except OSError:
-        print("[Error] Could not load VAE. Make sure the path contains config.json and model.safetensors/bin")
+        print("[Error] Could not load VAE. Make sure the path is correct.")
         return
 
     vae.eval()
     vae.requires_grad_(False)
     vae.to(device)
     
-    # Calculate Latent Shape
-    # Assuming standard VAE behavior: 32x32 image -> 4x4 latent (factor 8)
-    # Check VAE config
-    if hasattr(vae.config, "block_out_channels"):
-        num_downs = len(vae.config.block_out_channels) # usually 3 for [64, 128, 256]
-        # But 'layers_per_block' affects it too. Standard AutoencoderKL does downsampling per block.
-        # factor = 2 ** (num_downs - 1) usually.
-        # Let's just do a dummy pass to check shape.
-        dummy_img = torch.zeros(1, 3, args.image_size, args.image_size).to(device)
-        with torch.no_grad():
-            dummy_z = vae.encode(dummy_img).latent_dist.sample()
-        latent_shape = dummy_z.shape[1:] # (C, H, W) e.g., (4, 4, 4)
-        print(f"[Info] Latent Shape determined: {latent_shape}")
-    else:
-        # Fallback
-        latent_shape = (args.latent_channels, args.image_size // 8, args.image_size // 8)
-        print(f"[Info] Assuming Latent Shape: {latent_shape}")
+    # Calculate Latent Shape Dynamically
+    dummy_img = torch.zeros(1, 3, args.image_size, args.image_size).to(device)
+    with torch.no_grad():
+        dummy_z = vae.encode(dummy_img).latent_dist.sample()
+    latent_shape = dummy_z.shape[1:] # (C, H, W)
+    print(f"[Info] Latent Shape determined: {latent_shape} (from {args.image_size}x{args.image_size} input)")
+    
+    # # 2. Setup LDM UNet
+    # print(f"[Info] Initializing UNet for Latent Space...")
+    # unet = UNet2DModel(
+    #     sample_size=latent_shape[1],  
+    #     in_channels=latent_shape[0],  
+    #     out_channels=latent_shape[0], 
+    #     layers_per_block=2,
+    #     block_out_channels=tuple(args.unet_channels),
+    #     down_block_types=("DownBlock2D",) * len(args.unet_channels),
+    #     up_block_types=("UpBlock2D",) * len(args.unet_channels),
+    #     norm_num_groups=32,
+    # )
 
-    # 2. Setup LDM UNet
-    # Note: Input channels = VAE Latent Channels (not RGB 3)
-    # For 4x4 latents, we need a small UNet or one that doesn't downsample much.
-    print(f"[Info] Initializing UNet for Latent Space...")
+    # 2. Setup LDM UNet (Attention 적용 버전)
+    print(f"[Info] Initializing UNet with Attention...")
     unet = UNet2DModel(
-        sample_size=latent_shape[1],  # H
-        in_channels=latent_shape[0],  # C (4)
-        out_channels=latent_shape[0], # C (4)
+        sample_size=latent_shape[1],  # 16
+        in_channels=latent_shape[0],  # Latent Channel (보통 4)
+        out_channels=latent_shape[0], 
         layers_per_block=2,
-        block_out_channels=tuple(args.unet_channels), # e.g. (128, 256)
-        down_block_types=("DownBlock2D",) * len(args.unet_channels),
-        up_block_types=("UpBlock2D",) * len(args.unet_channels),
+        block_out_channels=tuple(args.unet_channels),
+
+        # 얕은 층은 DownBlock, 깊은 층(해상도 낮은 곳)은 AttnDownBlock 사용
+        down_block_types=(
+            "DownBlock2D",      # 16x16 -> 8x8 (여기선 CNN만 써서 특징 추출)
+            "AttnDownBlock2D",  # 8x8 -> 4x4   (Self-Attention 추가)
+            "AttnDownBlock2D",  # 4x4 -> 2x2   (Self-Attention 추가)
+        ),
+        up_block_types=(
+            "AttnUpBlock2D",    # 2x2 -> 4x4
+            "AttnUpBlock2D",    # 4x4 -> 8x8
+            "UpBlock2D",        # 8x8 -> 16x16
+        ),
+        
         norm_num_groups=32,
     )
+
+
     unet.to(device)
     print(f"[Info] UNet Parameters: {count_parameters(unet):,}")
 
@@ -323,10 +326,8 @@ def train(args):
                 # A. Encode Images to Latents (VAE is frozen)
                 with torch.no_grad():
                     posterior = vae.encode(x).latent_dist
-                    z = posterior.sample() # (B, 4, H/8, W/8)
-                    
-                    # B. Scale Latents (Important!)
-                    # z_std from VAE training was ~ X. We want std ~ 1.
+                    z = posterior.sample() 
+                    # B. Scale Latents
                     z = z * args.latent_scale_factor
 
                 # C. Add Noise to Latents
@@ -336,7 +337,7 @@ def train(args):
                 
                 noisy_z = noise_scheduler.add_noise(z, noise, timesteps)
 
-                # D. Predict Noise (UNet sees Latents)
+                # D. Predict Noise
                 noise_pred = unet(noisy_z, timesteps).sample
 
                 # E. Loss
@@ -364,9 +365,8 @@ def train(args):
 
             # Preview Sampling
             if (args.sample_interval > 0) and (global_step % args.sample_interval == 0):
-                # Sample in Latent Space -> Decode
+                unet.eval() 
                 with torch.no_grad():
-                    # Generate small batch for preview
                     with torch.amp.autocast('cuda', enabled=(args.mixed_precision == "fp16")):
                         gen_imgs = sample_ldm_ddim(
                             unet, vae, ddim_scheduler,
@@ -378,12 +378,12 @@ def train(args):
                         )
                     
                     grid = to_grid(gen_imgs, nrow=4)
-                    
                     save_path = output_dir / f"samples_step{global_step:06d}.png"
                     grid.save(save_path)
                     
                     if wandb.run is not None:
                         wandb.log({"samples_ldm": wandb.Image(grid)}, step=global_step)
+                unet.train()
 
             # FID Evaluation
             if (args.fid_interval > 0) and (global_step % args.fid_interval == 0):
@@ -404,7 +404,6 @@ def train(args):
     unet.save_pretrained(final_path)
     print(f"Training Done. Saved final UNet to {final_path}")
     
-    # Final FID
     if num_test_imgs > 0:
         compute_fid(unet, vae, ddim_scheduler, args, device, global_step, fid_real_cache, num_test_imgs, latent_shape)
 
@@ -413,34 +412,32 @@ def train(args):
 
 # ------------------------- Arguments -------------------------
 
-DATE=1218
+DATE=1227
 B=512
 LR=1e-4
-CUDA_NUM=5
-# VAE Path (User should change this)
-VAE_PATH = f"vae_out_dir/1218_b64_lr0.0001_klW_1e-06_block_64_128/checkpoint-53000" # 예시 경로
-# Latent Scale Factor (Important!)
-# If VAE z_std was ~4.0, set this to 0.25 (1/4.0)
-# If VAE z_std was ~0.2, set this to 5.0 (1/0.2)
-# Standard SD uses 0.18215. Check your VAE training logs!
-LATENT_SCALE = 1.0 / 1.09
+CUDA_NUM=1
+
+# [USER REQUIRED] VAE 경로와 Scale Factor를 설정하세요.
+# LATENT_SCALE = 1.0 / (VAE 학습 시의 z_std)
+LATENT_SCALE = 1 / 2.4631
+VAE_CHECKPOINT = "vae_out_dir/1227_b64_lr0.0001_MSE_klW_1e-08_block_64_128/checkpoint-1000000" # 수정 필요
 
 def parse_args():
     parser = argparse.ArgumentParser(description="LDM Training Single GPU")
     parser.add_argument("--device", type=str, default=f"cuda:{CUDA_NUM}")
     
     # Paths
-    parser.add_argument("--vae_path", type=str, default=VAE_PATH, help="Path to pretrained VAE folder")
+    parser.add_argument("--vae_path", type=str, default=VAE_CHECKPOINT, help="Path to pretrained VAE folder")
     parser.add_argument("--train_dir", type=str, default="cifar10_png_linear_only/rgb/train")
     parser.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/rgb/test", help="For FID")
-    parser.add_argument("--output_dir", type=str, default=f"ldm_out_dir/{DATE}_ldm_64_128_unet_b{B}_lr{LR}_128_256_256")
+    parser.add_argument("--output_dir", type=str, default=f"ldm_out_dir/{DATE}_cifar10_attn_unet_128_256_256_b{B}_lr{LR}")
     
     # WandB
     parser.add_argument("--project", type=str, default=f"ldm_training_{DATE}")
-    parser.add_argument("--run_name", type=str, default=f"ldm_64_128_b{B}_lr{LR}_128_256_256")
+    parser.add_argument("--run_name", type=str, default=f"ldm_attn_128_256_256_cifar10_b{B}")
 
     # Training
-    parser.add_argument("--epochs", type=int, default=1000)
+    parser.add_argument("--epochs", type=int, default=10000)
     parser.add_argument("--batch_size", type=int, default=B)
     parser.add_argument("--lr", type=float, default=LR)
     parser.add_argument("--weight_decay", type=float, default=0.0)
@@ -453,17 +450,18 @@ def parse_args():
     parser.add_argument("--image_size", type=int, default=32, help="Pixel image size")
     parser.add_argument("--latent_scale_factor", type=float, default=LATENT_SCALE, help="Scaling factor for latents (1/z_std)")
     
-    # UNet Config (Attention: Input 32x32 -> Latent 4x4)
-    # 4x4 Latent is very small. We cannot downsample much.
-    # Recommended: [128, 256] -> 1 downsample -> 2x2 bottleneck.
+    # UNet Config (Optimized for 16x16 Latent)
+    # [128, 256, 256] corresponds to:
+    # 16x16 -> (Down) -> 8x8 -> (Down) -> 4x4 -> (Down) -> 2x2 (Bottleneck)
+    # This is safe and effective for small resolution.
     parser.add_argument("--unet_channels", type=int, nargs="+", default=[128, 256, 256], help="UNet channels")
 
     # Sampling / FID
     parser.add_argument("--sample_steps", type=int, default=50)
     parser.add_argument("--sample_eta", type=float, default=0.0)
-    parser.add_argument("--sample_interval", type=int, default=5000)
-    parser.add_argument("--fid_interval", type=int, default=5000)
-    parser.add_argument("--save_interval", type=int, default=5000)
+    parser.add_argument("--sample_interval", type=int, default=10000)
+    parser.add_argument("--fid_interval", type=int, default=10000)
+    parser.add_argument("--save_interval", type=int, default=10000)
     parser.add_argument("--disable_fid", action="store_true")
     parser.add_argument("--fid_batch_size", type=int, default=64)
     parser.add_argument("--fid_gen_batch", type=int, default=256)
