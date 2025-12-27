@@ -414,7 +414,7 @@ def train(args):
 DATE=1227
 B=256
 LR=1e-4
-CUDA_NUM=7  # Default
+CUDA_NUM=4  # Default
 
 TT=400 
 DDIM_STEPS=50
