@@ -32,7 +32,7 @@ import torchvision.models as models
 from PIL import Image
 
 from diffusers import UNet2DModel, DDPMScheduler, DDIMScheduler, DDIMInverseScheduler
-
+from peft import LoraConfig, get_peft_model
 
 # ------------------------- Feature Extraction Utils -------------------------
 
@@ -830,29 +830,33 @@ def train(args):
     ddim_S = make_ddim(ddpm, prediction_type="epsilon")
 
     # ---- Student ----
-    if args.student_dir != "":
-        student_dir = Path(args.student_dir)
-        student = UNet2DModel.from_pretrained(student_dir.as_posix()).to(device)
-    else:
-        student = UNet2DModel(
-            sample_size=args.image_size,
-            in_channels=3,
-            out_channels=3,
-            block_out_channels=tuple(args.student_channels),
-            down_block_types=("DownBlock2D",) * len(args.student_channels),
-            up_block_types=("UpBlock2D",) * len(args.student_channels),
-            layers_per_block=args.layers_per_block,
-            norm_num_groups=args.norm_num_groups,
-            attention_head_dim=None,
-        ).to(device)
+    print(f"[Info] Initializing Student from Teacher weights and applying LoRA...", flush=True)
+    # 1. Student를 Teacher 경로에서 로드 (Teacher와 동일하게 초기화)
+    student = UNet2DModel.from_pretrained(teacher_dir.as_posix()).to(device)
+    # 2. 기존 파라미터 Freeze (학습되지 않도록 설정)
+    student.requires_grad_(False)
+    # 3. LoRA Config 설정
+    # target_modules는 Diffusers UNet의 Attention 모듈들을 타겟팅합니다.
+    lora_config = LoraConfig(
+        r=16,               # LoRA Rank (필요에 따라 조절, 예: 4, 8, 16)
+        lora_alpha=32,      # Alpha 값 (통상 r의 2배)
+        target_modules=["to_q", "to_k", "to_v", "to_out.0"], 
+        lora_dropout=0.05,
+        bias="none",
+    )
+    # 4. Student 모델에 LoRA 적용 (이 시점부터 student는 PeftModel이 됩니다)
+    student = get_peft_model(student, lora_config)
+    
+    # 5. 학습 가능한 파라미터 출력 (확인용)
+    student.print_trainable_parameters()
 
+    # 6. Train 모드 전환
     student.train()
-    for p in student.parameters():
-        p.requires_grad = True
 
     print(f"[Info] Teacher params: {count_parameters(teacher):,}", flush=True)
     print(f"[Info] Student params: {count_parameters(student):,}", flush=True)
 
+    # PEFT 모델이 알아서 trainable(LoRA) 파라미터만 넘겨줍니다.
     optimizer = torch.optim.AdamW(student.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     optimizer.zero_grad(set_to_none=True)
 
@@ -997,14 +1001,14 @@ def train(args):
 BATCH_SIZE = 8
 CLASSN = 100
 RKD_METRIC="clip" # pixel inception clip
-CUDA_NUM = 5
+CUDA_NUM = 6
 LR=1e-5
 
-RKD_W = 0.1#0.1
-INV_W = 0.1#0.1
-INVINV_W = 1.0#1.0
+RKD_W = 0.1
+INV_W = 0.1
+INVINV_W = 1.0
 FD_W = 0.0001
-SAME_W = 0.1#0.01
+SAME_W = 0.1
 
 def build_argparser():
     p = argparse.ArgumentParser("Student x0 distillation with Feature-based losses")
@@ -1013,7 +1017,7 @@ def build_argparser():
     p.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test")
     p.add_argument("--teacher_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
     p.add_argument("--student_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
-    p.add_argument("--output_dir", type=str, default=f"out_1226_rkd_{RKD_METRIC}_feature_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}_LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
+    p.add_argument("--output_dir", type=str, default=f"out_1226_rkd_{RKD_METRIC}_lora_feature_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}_LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
 
     # Metric Selection for RKD/INV
     p.add_argument("--rkd_metric", type=str, default=RKD_METRIC, choices=["pixel", "inception", "clip"], 
@@ -1023,7 +1027,7 @@ def build_argparser():
 
     p.add_argument("--device", type=str, default=f"cuda:{CUDA_NUM}")
     p.add_argument("--project", type=str, default="rkd-feature-cifar10-rgb-to-gray-1226")
-    p.add_argument("--run_name", type=str, default=f"student-{RKD_METRIC}-x0-pixel-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
+    p.add_argument("--run_name", type=str, default=f"student-lor-{RKD_METRIC}-x0-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
     p.add_argument("--wandb_offline", action="store_true")
     p.add_argument("--mixed_precision", type=str, default="fp16", choices=["no", "fp16", "bf16"])
 
