@@ -505,8 +505,8 @@ def train(args):
             out_channels=latent_shape[0],
             layers_per_block=args.layers_per_block,
             block_out_channels=tuple(args.unet_channels),
-            down_block_types=("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"), 
-            up_block_types=("AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"),
+            down_block_types=("DownBlock2D", "DownBlock2D", "DownBlock2D"), 
+            up_block_types=("UpBlock2D", "UpBlock2D", "UpBlock2D"),
             norm_num_groups=args.norm_num_groups,
         ).to(device)
     
@@ -618,7 +618,7 @@ def train(args):
 BATCH_SIZE = 8
 CLASSN = 100
 RKD_METRIC="pixel" # pixel inception clip
-CUDA_NUM = 4
+CUDA_NUM = 3
 LR=1e-5
 
 RKD_W = 0.1
@@ -631,11 +631,11 @@ def parse_args():
     parser = argparse.ArgumentParser(description="LDM RKD Distillation")
     # Paths
     parser.add_argument("--vae_path", type=str, default="1227_b64_lr0.0001_MSE_klW_1e-08_block_64_128-checkpoint-1000000", help="Pretrained VAE path")
-    parser.add_argument("--teacher_dir", type=str, default="", help="Pretrained Latent Teacher UNet")
-    parser.add_argument("--student_dir", type=str, default="", help="Pretrained Student (Optional)")
+    parser.add_argument("--teacher_dir", type=str, default="1228_cifar10_unet_64_128_b256_lr0.0001_rgb_unet_step150000", help="Pretrained Latent Teacher UNet")
+    parser.add_argument("--student_dir", type=str, default="1228_cifar10_unet_64_128_b256_lr0.0001_rgb_unet_step150000", help="Pretrained Student (Optional)")
     parser.add_argument("--student_data_dir", type=str, default="cifar10_student_data_n100/gray3/train")
     parser.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test")
-    parser.add_argument("--output_dir", type=str, default=f"out_1227_rkd_{RKD_METRIC}_LDM_attn_feature_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}_LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
+    parser.add_argument("--output_dir", type=str, default=f"out_1228_rkd_{RKD_METRIC}_LDM_feature_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}_LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
     parser.add_argument("--use_subfolder", action="store_true", help="If models are in subfolders like 'unet'")
 
     # LDM Config
@@ -674,8 +674,8 @@ def parse_args():
     parser.add_argument("--fid_eps", type=float, default=1e-8)
 
     # Logging / Sampling
-    parser.add_argument("--project", type=str, default="rkd-feature-cifar10-rgb-to-gray-1227")
-    parser.add_argument("--run_name", type=str, default=f"student-{RKD_METRIC}-LDM-attn-x0-pixel-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
+    parser.add_argument("--project", type=str, default="rkd-feature-cifar10-rgb-to-gray-1228")
+    parser.add_argument("--run_name", type=str, default=f"student-{RKD_METRIC}-LDM-x0-pixel-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
     parser.add_argument("--no_wandb", action="store_true")
     parser.add_argument("--wandb_offline", action="store_true")
     parser.add_argument("--log_interval", type=int, default=100)
