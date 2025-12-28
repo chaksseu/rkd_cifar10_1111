@@ -411,10 +411,10 @@ def train(args):
 
 # ------------------------- Args -------------------------
 
-DATE=1227
+DATE=1228
 B=256
 LR=1e-4
-CUDA_NUM=4  # Default
+CUDA_NUM=3  # Default
 
 TT=400 
 DDIM_STEPS=50
@@ -426,7 +426,7 @@ def build_argparser():
     p.add_argument("--cuda_num", type=str, default=str(CUDA_NUM), help="GPU ID to use (e.g. '0' or '7')")
 
     # Model Loading (Base Model)
-    p.add_argument("--pretrained_model_path", type=str, default="ddpm_attn_cifar10_rgb_T400_DDIM50/ckpt_step055000", 
+    p.add_argument("--pretrained_model_path", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000", 
                    help="Path to the folder containing the pre-trained UNet and scheduler (e.g. ./ddpm_cifar10/final)")
     
     # LoRA Config
@@ -438,9 +438,9 @@ def build_argparser():
     p.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test", help="Path to NEW test data (for FID)")
     
     # Training Config
-    p.add_argument("--output_dir", type=str, default=f"./ddpm_attn_LoRA_gray_r32_a32_cifar10_rgb_T{TT}_DDIM{DDIM_STEPS}", help="Where to save checkpoints & final model")
-    p.add_argument("--project", type=str, default="ddpm-attn-cifar10-1227", help="W&B project name")
-    p.add_argument("--run_name", type=str, default=f"ddpm-attn-LoRA_gray_r32_a32_-b{B}-lr{LR}", help="W&B run name")
+    p.add_argument("--output_dir", type=str, default=f"./ddpm_LoRA_gray_r32_a32_cifar10_rgb_T{TT}_DDIM{DDIM_STEPS}", help="Where to save checkpoints & final model")
+    p.add_argument("--project", type=str, default="ddpm-cifar10-1228", help="W&B project name")
+    p.add_argument("--run_name", type=str, default=f"ddpm-LoRA_gray_r32_a32_-b{B}-lr{LR}", help="W&B run name")
     p.add_argument("--wandb_offline", action="store_true")
     
     p.add_argument("--epochs", type=int, default=10000)

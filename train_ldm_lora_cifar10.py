@@ -418,15 +418,15 @@ def train(args):
 
 # ------------------------- Arguments -------------------------
 
-DATE=1227
-B=128
+DATE=1228
+B=256
 LR=1e-4
-CUDA_NUM=7
+CUDA_NUM=2
 
 # [USER REQUIRED] VAE 및 Pretrained UNet 경로 설정
 LATENT_SCALE = 1 / 2.4774
 VAE_CHECKPOINT = "1227_b64_lr0.0001_MSE_klW_1e-08_block_64_128-checkpoint-1000000" # VAE 경로
-PRETRAINED_UNET = "ldm_out_dir/1227_cifar10_attn_unet_64_128_b256_lr0.0001_rgb/unet_step060000" # 학습된 LDM 경로
+PRETRAINED_UNET = "ldm_out_dir/1228_cifar10_unet_64_128_b256_lr0.0001_rgb/unet_step150000" # 학습된 LDM 경로
 
 def parse_args():
     parser = argparse.ArgumentParser(description="LDM LoRA Training Single GPU")
@@ -446,8 +446,8 @@ def parse_args():
     parser.add_argument("--lora_alpha", type=int, default=32)
 
     # WandB
-    parser.add_argument("--project", type=str, default="ddpm-attn-cifar10-1227", help="W&B project name")
-    parser.add_argument("--run_name", type=str, default=f"ldm-attn-LoRA_gray_r32_a32_-b{B}-lr{LR}", help="W&B run name")
+    parser.add_argument("--project", type=str, default="ddpm-cifar10-1228", help="W&B project name")
+    parser.add_argument("--run_name", type=str, default=f"ldm-LoRA_gray_r32_a32_-b{B}-lr{LR}", help="W&B run name")
 
     # Training
     parser.add_argument("--epochs", type=int, default=10000)
