@@ -13,13 +13,10 @@ import math  # [추가] 제곱근 계산을 위해 추가
 # --------------------------------------------------------------------------
 DEFAULT_TEACHER = "ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000"
 DEFAULT_STUDENT = [
-    "out_1228_rkd/rkd_pixel_feature_cifar10_rgb_to_gray_single_batch8_N100_LR1e-05-FD-rkdW0.1-invW0.0-invinvW0.0-fdW0.0-sameW0.0-no-init-eps/last",
-    "out_1228_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N100_LR1e-05-FD-rkdW0.1-invW0.0-invinvW0.0-fdW0.0-sameW0.0-no-init-eps/last",
-    "out_1228_rkd/rkd_pixel_feature_cifar10_rgb_to_gray_single_batch8_N100_LR1e-05-FD-rkdW0.1-invW0.0-invinvW0.0-fdW0.0-sameW0.0-teacher-init-eps/last",
-    "out_1228_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N100_LR1e-05-FD-rkdW0.1-invW0.0-invinvW0.0-fdW0.0-sameW0.0-teacher-init-eps/last",
+    "out_1228_rkd/rkd_pixel_feature_cifar10_rgb_to_gray_single_batch8_N100_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW1e-06-sameW0.1-teacher-init-eps/ckpts/ckpt_step004000",
 ]
-DEFAULT_DEVICE = "cuda:7"
-DEFAULT_OUTPUT_DIR = "1229_comparison_grids_teacher_only_RKD_no_init"
+DEFAULT_DEVICE = "cuda:0"
+DEFAULT_OUTPUT_DIR = "1229_comparison_grids_teacher_RKD_pixel_feature_teacher_init"
 DEFAULT_IMAGE_SIZE = 32
 DEFAULT_NUM_IMAGES = 36  # [변경] 정사각형(6x6)을 위해 36으로 설정
 DEFAULT_STEPS = 50

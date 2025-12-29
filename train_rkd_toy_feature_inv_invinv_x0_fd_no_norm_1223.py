@@ -1016,25 +1016,25 @@ def train(args):
 # ------------------------- Args -------------------------
 
 BATCH_SIZE = 8
-CLASSN = 100
-RKD_METRIC="pixel" # pixel inception clip
-CUDA_NUM = 7
+CLASSN = 10
+RKD_METRIC="clip" # pixel inception clip
+CUDA_NUM = 6
 LR=1e-5
 
 RKD_W = 0.1
 INV_W = 0.1
 INVINV_W = 1.0
-FD_W = 0.000001
+FD_W = 0.0001
 SAME_W = 0.1
 
 def build_argparser():
     p = argparse.ArgumentParser("Student x0 distillation with Feature-based losses")
 
-    p.add_argument("--student_data_dir", type=str, default="cifar10_student_data_n100/gray3/train")
+    p.add_argument("--student_data_dir", type=str, default="cifar10_student_data_n10_no_airplane_automobile_bird_deer_dog/gray3/train")
     p.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test")
     p.add_argument("--teacher_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
     p.add_argument("--student_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
-    p.add_argument("--output_dir", type=str, default=f"out_1228_rkd/rkd_{RKD_METRIC}_feature_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}_LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
+    p.add_argument("--output_dir", type=str, default=f"out_1229_rkd/rkd_{RKD_METRIC}_feature_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}_LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps_no_airplane_automobile_bird_deer_dog")
 
     # Metric Selection for RKD/INV
     p.add_argument("--rkd_metric", type=str, default=RKD_METRIC, choices=["pixel", "inception", "clip"], 
@@ -1043,8 +1043,8 @@ def build_argparser():
                    help="HuggingFace model name for CLIP if rkd_metric='clip'")
 
     p.add_argument("--device", type=str, default=f"cuda:{CUDA_NUM}")
-    p.add_argument("--project", type=str, default="rkd-feature-cifar10-rgb-to-gray-1228")
-    p.add_argument("--run_name", type=str, default=f"student-{RKD_METRIC}-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
+    p.add_argument("--project", type=str, default="rkd-feature-cifar10-rgb-to-gray-1229")
+    p.add_argument("--run_name", type=str, default=f"student-{RKD_METRIC}-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps_no_airplane_automobile_bird_deer_dog")
     p.add_argument("--wandb_offline", action="store_true")
     p.add_argument("--mixed_precision", type=str, default="fp16", choices=["no", "fp16", "bf16"])
 

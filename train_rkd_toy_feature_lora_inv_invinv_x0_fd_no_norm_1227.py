@@ -838,11 +838,10 @@ def train(args):
     # 3. LoRA Config 설정
     # target_modules는 Diffusers UNet의 Attention 모듈들을 타겟팅합니다.
     lora_config = LoraConfig(
-        r=16,               # LoRA Rank (필요에 따라 조절, 예: 4, 8, 16)
+        r=32,               # LoRA Rank (필요에 따라 조절, 예: 4, 8, 16)
         lora_alpha=32,      # Alpha 값 (통상 r의 2배)
         target_modules=["to_q", "to_k", "to_v", "to_out.0"], 
-        lora_dropout=0.05,
-        bias="none",
+        init_lora_weights="gaussian",
     )
     # 4. Student 모델에 LoRA 적용 (이 시점부터 student는 PeftModel이 됩니다)
     student = get_peft_model(student, lora_config)
@@ -999,10 +998,11 @@ def train(args):
 # ------------------------- Args -------------------------
 
 BATCH_SIZE = 8
-CLASSN = 100
+CLASSN = 10
 RKD_METRIC="clip" # pixel inception clip
-CUDA_NUM = 6
+CUDA_NUM = 7
 LR=1e-5
+DATE="1229"
 
 RKD_W = 0.1
 INV_W = 0.1
@@ -1013,11 +1013,11 @@ SAME_W = 0.1
 def build_argparser():
     p = argparse.ArgumentParser("Student x0 distillation with Feature-based losses")
 
-    p.add_argument("--student_data_dir", type=str, default="cifar10_student_data_n100/gray3/train")
+    p.add_argument("--student_data_dir", type=str, default="cifar10_student_data_n10/gray3/train")
     p.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test")
     p.add_argument("--teacher_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
     p.add_argument("--student_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
-    p.add_argument("--output_dir", type=str, default=f"out_1226_rkd_{RKD_METRIC}_lora_feature_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}_LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
+    p.add_argument("--output_dir", type=str, default=f"out_{DATE}_rkd/rkd_{RKD_METRIC}_lora_feature_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}_LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
 
     # Metric Selection for RKD/INV
     p.add_argument("--rkd_metric", type=str, default=RKD_METRIC, choices=["pixel", "inception", "clip"], 
@@ -1026,8 +1026,8 @@ def build_argparser():
                    help="HuggingFace model name for CLIP if rkd_metric='clip'")
 
     p.add_argument("--device", type=str, default=f"cuda:{CUDA_NUM}")
-    p.add_argument("--project", type=str, default="rkd-feature-cifar10-rgb-to-gray-1226")
-    p.add_argument("--run_name", type=str, default=f"student-lor-{RKD_METRIC}-x0-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
+    p.add_argument("--project", type=str, default=f"rkd-feature-cifar10-rgb-to-gray-{DATE}")
+    p.add_argument("--run_name", type=str, default=f"student-lora-{RKD_METRIC}-x0-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
     p.add_argument("--wandb_offline", action="store_true")
     p.add_argument("--mixed_precision", type=str, default="fp16", choices=["no", "fp16", "bf16"])
 
