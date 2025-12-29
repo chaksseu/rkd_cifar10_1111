@@ -420,8 +420,8 @@ def train(args):
 
 DATE=1228
 B=256
-LR=1e-4
-CUDA_NUM=2
+LR=1e-5
+CUDA_NUM=0
 
 # [USER REQUIRED] VAE 및 Pretrained UNet 경로 설정
 LATENT_SCALE = 1 / 2.4774

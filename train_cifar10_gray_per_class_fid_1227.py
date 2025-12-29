@@ -21,7 +21,7 @@ Example:
 """
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"   # <= 이 줄 추가 (GPU 0만 보이게)
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"   # <= 이 줄 추가 (GPU 0만 보이게)
 
 
 import os
@@ -589,7 +589,6 @@ def train(args):
         noise_scheduler.save_pretrained(final_dir.as_posix())
         accelerator.print(f"[Done] Saved model to {final_dir}")
     accelerator.wait_for_everyone()
-
     accelerator.end_training()
 
 TT=400
@@ -597,16 +596,16 @@ DDIM_STEPS=50
 def build_argparser():
     p = argparse.ArgumentParser(description="Accelerate-based unconditional DDPM training + DDIM sampling (W&B logging + local saves + FID overall & per-class)")
     # data / io
-    p.add_argument("--train_dir", type=str, default="./cifar10_png_linear_only/gray3/train", help="Folder with images (recursively reads *.png/*.jpg)")
-    # p.add_argument("--train_dir", type=str, default="cifar10_student_data_n100/gray3/train", help="Folder with images (recursively reads *.png/*.jpg)")
+    # p.add_argument("--train_dir", type=str, default="./cifar10_png_linear_only/gray3/train", help="Folder with images (recursively reads *.png/*.jpg)")
+    p.add_argument("--train_dir", type=str, default="cifar10_student_data_n10/gray3/train", help="Folder with images (recursively reads *.png/*.jpg)")
     p.add_argument("--test_dir",  type=str, default="./cifar10_png_linear_only/gray3/test",  help="Folder with class subdirs containing PNGs (used for FID)")
-    p.add_argument("--output_dir", type=str, default=f"./ddpm_cifar10_gray3_T{TT}_DDIM{DDIM_STEPS}-CLASS_ALL", help="Where to save checkpoints & final model")
+    p.add_argument("--output_dir", type=str, default=f"./ddpm_cifar10_gray3_T{TT}_DDIM{DDIM_STEPS}-CLASS_N10", help="Where to save checkpoints & final model")
     # logging
     p.add_argument("--project", type=str, default="ddpm-cifar10-1228", help="W&B project name")
-    p.add_argument("--run_name", type=str, default="gray3-linear-ddpm-b256-lr1e4-CLASS_ALL", help="W&B run name")
+    p.add_argument("--run_name", type=str, default="gray3-linear-ddpm-b256-lr1e4-CLASS_N10", help="W&B run name")
     p.add_argument("--wandb_offline", action="store_true", help="Use W&B offline mode (WANDB_MODE=offline)")
     # train
-    p.add_argument("--epochs", type=int, default=100000)
+    p.add_argument("--epochs", type=int, default=1000000)
     p.add_argument("--batch_size", type=int, default=256)
     p.add_argument("--num_workers", type=int, default=4)
     p.add_argument("--grad_accum", type=int, default=1, help="Gradient accumulation steps")

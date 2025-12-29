@@ -7,7 +7,7 @@ Additionally, computes FID (pytorch-fid) on sampling steps against a test set.
 """
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"   # 필요 시 주석 해제
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"   # 필요 시 주석 해제
 
 import math
 import argparse
@@ -25,6 +25,8 @@ from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as T
 import torchvision.utils as vutils
 
+# [수정] wandb 임포트 추가
+import wandb
 from accelerate import Accelerator, DistributedDataParallelKwargs
 from accelerate.utils import set_seed
 
@@ -287,7 +289,7 @@ def train(args):
     accelerator.print(f"[Info] Found {len(dataset)} training images under {args.train_dir}")
     accelerator.print(f"[Info] steps_per_epoch (optimizer steps) ≈ {steps_per_epoch}")
 
-    # FID setup (omitted for brevity, same as before)
+    # FID setup
     num_test_imgs = 0
     fid_real_root_dir = Path(args.output_dir) / "fid" / "real_cache"
     fid_real_all_dir = fid_real_root_dir / "all"
@@ -312,11 +314,10 @@ def train(args):
     num_test_imgs = accelerator.gather_for_metrics(torch.tensor([num_test_imgs], device=device)).max().item()
 
     # -----------------------------------------------------------
-    # [수정됨] Model Initialization Logic (Pretrained or New)
+    # Model Initialization Logic
     # -----------------------------------------------------------
     if args.pretrained_model_path and os.path.isdir(args.pretrained_model_path):
         accelerator.print(f"[Info] Loading pretrained model from: {args.pretrained_model_path}")
-        # Diffusers 포맷(config.json + .bin/.safetensors)으로 저장된 폴더 로드
         model = UNet2DModel.from_pretrained(args.pretrained_model_path)
     else:
         accelerator.print("[Info] Initializing new model from scratch.")
@@ -396,12 +397,12 @@ def train(args):
                     }, step=global_step)
                     accelerator.print(f"[Epoch {epoch:03d}] step={global_step:06d} loss={loss_detached:.4f}")
 
-                # Sampling & FID logic (omitted - same as before)
+                # Sampling & FID logic
                 if (args.sample_interval > 0) and (global_step % args.sample_interval == 0):
                     accelerator.wait_for_everyone()
                     if accelerator.is_main_process:
                         unwrapped = accelerator.unwrap_model(model)
-                        # ... Sampling logic (same as original) ...
+                        
                         with torch.no_grad():
                             autocast_device = "cuda" if device.type == "cuda" else "cpu"
                             with torch.autocast(autocast_device, enabled=(accelerator.mixed_precision is not None)):
@@ -416,7 +417,14 @@ def train(args):
                         out_path.parent.mkdir(parents=True, exist_ok=True)
                         grid.save(out_path)
                         
-                        # FID compute (omitted call for brevity, works same as original)
+                        # [수정] WandB에 이미지 로깅 추가
+                        try:
+                            accelerator.log({
+                                "sample_grid": wandb.Image(grid, caption=f"Step {global_step}")
+                            }, step=global_step)
+                        except Exception as e:
+                            print(f"WandB image log failed: {e}")
+                        
                         if not args.disable_fid and num_test_imgs > 0:
                             compute_and_log_fid(
                                 accelerator, unwrapped, ddim_scheduler, args, device, global_step,
@@ -450,31 +458,40 @@ def train(args):
 
     accelerator.end_training()
 
-
+DATE=1229
 TT=400
 DDIM_STEPS=50
+BATCH_SIZE=32
+LR=1e-5
+
 def build_argparser():
     p = argparse.ArgumentParser(description="DDPM Training")
     # Data / IO
     # p.add_argument("--train_dir", type=str, default="./cifar10_png_linear_only/gray3/train")
-    p.add_argument("--train_dir", type=str, default="cifar10_student_data_n100/gray3/train")
+    p.add_argument("--train_dir", type=str, default="cifar10_student_data_n10")
     p.add_argument("--test_dir",  type=str, default="./cifar10_png_linear_only/gray3/test")
-    p.add_argument("--output_dir", type=str, default=f"./ddpm_cifar10_gray3_T{TT}_DDIM{DDIM_STEPS}_teacher_init_N100")
+    p.add_argument("--output_dir", type=str, default=f"{DATE}_ddpm/ddpm_cifar10_gray3_T{TT}_DDIM{DDIM_STEPS}_B{BATCH_SIZE}_LR{LR}_teacher_init_n10")
     
     # Pretrained Model Argument
     p.add_argument("--pretrained_model_path", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000", 
                    help="Path to a pretrained Diffusers UNet folder (containing config.json and .bin/.safetensors)")
+    # 1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/last
+    # 1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_no_airplane/last
+    # 1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_no_airplane_automobile_bird_deer_dog/last
 
     # Logging
-    p.add_argument("--project", type=str, default="ddpm-cifar10-1228")
-    p.add_argument("--run_name", type=str, default="gray3-linear-ddpm-teacher-init-N100")
+    p.add_argument("--project", type=str, default=f"ddpm-cifar10-{DATE}")
+    p.add_argument("--run_name", type=str, default=f"gray3-ddpm-teacher-init-B{BATCH_SIZE}-LR{LR}_n10")
     p.add_argument("--wandb_offline", action="store_true")
     # Train params
     p.add_argument("--epochs", type=int, default=100000)
-    p.add_argument("--batch_size", type=int, default=256)
+    p.add_argument("--batch_size", type=int, default=16)
     p.add_argument("--num_workers", type=int, default=4)
     p.add_argument("--grad_accum", type=int, default=1)
-    p.add_argument("--lr", type=float, default=1e-4)
+    
+    # [수정] lr 기본값을 1e-4 -> 1e-5로 변경
+    p.add_argument("--lr", type=float, default=1e-5)
+    
     p.add_argument("--weight_decay", type=float, default=0.0)
     p.add_argument("--max_grad_norm", type=float, default=1.0)
     p.add_argument("--image_size", type=int, default=32)

@@ -10,6 +10,7 @@ Dependencies:
 """
 
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"  # 모든 import 보다 먼저!
 import math
 import argparse
 import shutil
@@ -411,10 +412,10 @@ def train(args):
 
 # ------------------------- Args -------------------------
 
-DATE=1228
-B=256
-LR=1e-4
-CUDA_NUM=3  # Default
+DATE=1229
+B=32
+LR=1e-5 
+CUDA_NUM=1
 
 TT=400 
 DDIM_STEPS=50
@@ -428,22 +429,24 @@ def build_argparser():
     # Model Loading (Base Model)
     p.add_argument("--pretrained_model_path", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000", 
                    help="Path to the folder containing the pre-trained UNet and scheduler (e.g. ./ddpm_cifar10/final)")
-    
+    # 
+
     # LoRA Config
     p.add_argument("--lora_rank", type=int, default=32, help="Rank of LoRA update matrices")
     p.add_argument("--lora_alpha", type=int, default=32, help="LoRA scaling factor")
 
     # Data (New Dataset)
-    p.add_argument("--train_dir", type=str, default="cifar10_student_data_n100/gray3/train", help="Path to NEW training data")
+    # p.add_argument("--train_dir", type=str, default="cifar10_png_linear_only/gray3/train", help="Path to NEW training data")
+    p.add_argument("--train_dir", type=str, default="cifar10_student_data_n10", help="Path to NEW training data")
     p.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test", help="Path to NEW test data (for FID)")
     
     # Training Config
-    p.add_argument("--output_dir", type=str, default=f"./ddpm_LoRA_gray_r32_a32_cifar10_rgb_T{TT}_DDIM{DDIM_STEPS}", help="Where to save checkpoints & final model")
-    p.add_argument("--project", type=str, default="ddpm-cifar10-1228", help="W&B project name")
-    p.add_argument("--run_name", type=str, default=f"ddpm-LoRA_gray_r32_a32_-b{B}-lr{LR}", help="W&B run name")
+    p.add_argument("--output_dir", type=str, default=f"{DATE}_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T{TT}_DDIM{DDIM_STEPS}-b{B}-lr{LR}_n10", help="Where to save checkpoints & final model")
+    p.add_argument("--project", type=str, default=f"ddpm-cifar10-{DATE}", help="W&B project name")
+    p.add_argument("--run_name", type=str, default=f"ddpm-LoRA_gray_r32_a32_-b{B}-lr{LR}_n10", help="W&B run name")
     p.add_argument("--wandb_offline", action="store_true")
     
-    p.add_argument("--epochs", type=int, default=10000)
+    p.add_argument("--epochs", type=int, default=100000)
     p.add_argument("--batch_size", type=int, default=B)
     p.add_argument("--lr", type=float, default=LR)
     p.add_argument("--grad_accum", type=int, default=1)
