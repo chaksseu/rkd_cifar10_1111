@@ -11,3 +11,5 @@ pytorch-fid
 tqdm
 opencv-python-headless
 peft
+nvitop
+datasets

@@ -1000,7 +1000,7 @@ DATE="1229"
 RKD_W = 0.1
 INV_W = 0.1
 INVINV_W = 1.0
-FD_W = 0.0001
+FD_W = 0.00001
 SAME_W = 0.1
 
 def build_argparser():

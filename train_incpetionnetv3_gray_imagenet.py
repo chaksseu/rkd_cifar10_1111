@@ -2,22 +2,19 @@
 # -*- coding: utf-8 -*-
 
 """
-Train Inception-v3 from scratch on exported ImageNet-1k gray3 ImageFolder + wandb logging,
-with separate console log interval vs wandb log interval.
+Train Inception-v3 on ImageNet-1k style ImageFolder (single GPU) with:
+- AMP (torch.amp) => no deprecation warnings
+- Custom Warmup+Cosine LR scheduler => no "scheduler.step before optimizer.step" warning
+- Safe EMA
+- RandAugment
+- Gray->RGB(3ch) force option
+- Weights & Biases logging (step-based, offline/resume supported)
 
-Expected folder layout:
-  <data_root>/gray3/train/<class_name>/*.png
-  <data_root>/gray3/val/<class_name>/*.png
-
-Example:
-  python train_inception_v3_gray3_scratch_wandb.py \
-    --train_dir ./imagenet1k_gray3_export/gray3/train \
-    --val_dir   ./imagenet1k_gray3_export/gray3/val \
-    --output_dir ./inceptionv3_gray3_scratch \
-    --device cuda:0 --epochs 90 --batch_size 256 --lr 0.4 \
-    --aux_logits --amp \
-    --wandb --wandb_project imagenet-gray3 --wandb_name incv3-scratch-gray3 \
-    --log_interval 50 --wandb_log_interval 200
+Aligned defaults to your run log:
+- device=cuda:6
+- amp=True, tf32=True, ema=True, randaug=True, force_gray3=True
+- optimizer=sgd, bs=256 => lr=0.1, wd=1e-4
+- warmup_epochs=5
 """
 
 import os
@@ -25,8 +22,11 @@ import json
 import time
 import math
 import argparse
+import random
+import copy
+import logging
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional, Dict, Tuple, Any
 
 import torch
 import torch.nn as nn
@@ -39,80 +39,336 @@ from torchvision.datasets import ImageFolder
 
 
 # -------------------------
+# Logging
+# -------------------------
+
+def setup_logger(log_path: Optional[Path]) -> logging.Logger:
+    logger = logging.getLogger("train_incv3")
+    logger.setLevel(logging.INFO)
+    logger.handlers.clear()
+
+    fmt = logging.Formatter("[%(asctime)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+
+    sh = logging.StreamHandler()
+    sh.setLevel(logging.INFO)
+    sh.setFormatter(fmt)
+    logger.addHandler(sh)
+
+    if log_path is not None:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        fh = logging.FileHandler(str(log_path), mode="a", encoding="utf-8")
+        fh.setLevel(logging.INFO)
+        fh.setFormatter(fmt)
+        logger.addHandler(fh)
+
+    return logger
+
+
+# -------------------------
 # Utils
 # -------------------------
 
 def ensure_dir(p: Path):
     p.mkdir(parents=True, exist_ok=True)
 
-def resolve_device(device_str: str) -> torch.device:
-    try:
-        dev = torch.device(device_str)
-    except Exception:
-        return torch.device("cpu")
-    if dev.type == "cuda" and not torch.cuda.is_available():
-        return torch.device("cpu")
-    return dev
-
-def set_seed(seed: int):
-    import random
-    random.seed(seed)
-    os.environ["PYTHONHASHSEED"] = str(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-
 def save_json(path: Path, obj: dict):
     with path.open("w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, indent=2)
 
-def count_parameters(model: nn.Module) -> int:
-    return sum(p.numel() for p in model.parameters())
+def set_seed(seed: int, deterministic: bool = False):
+    random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    try:
+        import numpy as np
+        np.random.seed(seed)
+    except Exception:
+        pass
+
+    if deterministic:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+def resolve_device(device_str: str) -> torch.device:
+    s = (device_str or "cuda").strip().lower()
+    if s == "cpu":
+        return torch.device("cpu")
+    if s == "cuda":
+        return torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
+    if s.startswith("cuda:"):
+        if not torch.cuda.is_available():
+            return torch.device("cpu")
+        try:
+            idx = int(s.split(":")[1])
+        except Exception:
+            idx = 0
+        n = torch.cuda.device_count()
+        if idx < 0 or idx >= n:
+            idx = 0
+        return torch.device(f"cuda:{idx}")
+    try:
+        dev = torch.device(s)
+        if dev.type == "cuda" and not torch.cuda.is_available():
+            return torch.device("cpu")
+        return dev
+    except Exception:
+        return torch.device("cpu")
 
 @torch.no_grad()
 def accuracy_topk(logits: torch.Tensor, targets: torch.Tensor, topk=(1, 5)) -> Dict[str, float]:
     maxk = max(topk)
-    _, pred = logits.topk(maxk, dim=1, largest=True, sorted=True)  # (N,maxk)
-    pred = pred.t()  # (maxk, N)
+    _, pred = logits.topk(maxk, dim=1, largest=True, sorted=True)  # [N,maxk]
+    pred = pred.t()  # [maxk,N]
     correct = pred.eq(targets.view(1, -1).expand_as(pred))
-    out = {}
+    out: Dict[str, float] = {}
     N = targets.size(0)
     for k in topk:
         c = correct[:k].reshape(-1).float().sum().item()
         out[f"top{k}"] = 100.0 * c / max(N, 1)
     return out
 
-def unpack_inception_outputs(outputs):
-    """
-    torchvision inception_v3 can return:
-      - train mode with aux_logits=True: InceptionOutputs(logits, aux_logits)
-      - eval mode: logits tensor
-    """
+def unpack_inception_outputs(outputs) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
     if hasattr(outputs, "logits"):
-        logits = outputs.logits
-        aux = getattr(outputs, "aux_logits", None)
-        return logits, aux
+        return outputs.logits, getattr(outputs, "aux_logits", None)
     if isinstance(outputs, (tuple, list)) and len(outputs) == 2:
         return outputs[0], outputs[1]
     return outputs, None
 
-def set_lr(optimizer: torch.optim.Optimizer, lr: float):
-    for pg in optimizer.param_groups:
-        pg["lr"] = float(lr)
 
-def get_lr(optimizer: torch.optim.Optimizer) -> float:
-    return float(optimizer.param_groups[0]["lr"])
+# -------------------------
+# Grayscale safety transform
+# -------------------------
+
+class ForceGray3:
+    """Convert any PIL image -> grayscale (L) -> RGB (3ch)."""
+    def __call__(self, img):
+        img = img.convert("L")
+        img = img.convert("RGB")
+        return img
 
 
 # -------------------------
-# LR schedule (Warmup + Cosine)
+# Safe EMA
 # -------------------------
 
-def lr_at_epoch(base_lr: float, epoch: int, total_epochs: int, warmup_epochs: int) -> float:
-    if warmup_epochs > 0 and epoch < warmup_epochs:
-        return base_lr * float(epoch + 1) / float(warmup_epochs)
-    t = (epoch - warmup_epochs) / max(1, (total_epochs - warmup_epochs))
-    t = min(max(t, 0.0), 1.0)
-    return base_lr * 0.5 * (1.0 + math.cos(math.pi * t))
+class ModelEma:
+    """
+    Safe EMA:
+      - EMA only for floating-point parameters
+      - buffers (BN running stats, num_batches_tracked, etc.) are copied
+    """
+    def __init__(self, model: nn.Module, decay: float = 0.9999, device: Optional[torch.device] = None):
+        self.module = copy.deepcopy(model)
+        self.module.eval()
+        self.decay = float(decay)
+        self.device = device
+        if self.device is not None:
+            self.module.to(self.device)
+
+    @torch.no_grad()
+    def update(self, model: nn.Module):
+        ema_params = dict(self.module.named_parameters())
+        model_params = dict(model.named_parameters())
+
+        for name, p in model_params.items():
+            if name not in ema_params:
+                continue
+            src = p.data
+            dst = ema_params[name].data
+            if self.device is not None:
+                src = src.to(self.device)
+            if torch.is_floating_point(dst) and torch.is_floating_point(src):
+                dst.mul_(self.decay).add_(src, alpha=(1.0 - self.decay))
+            else:
+                dst.copy_(src)
+
+        ema_bufs = dict(self.module.named_buffers())
+        model_bufs = dict(model.named_buffers())
+        for name, b in model_bufs.items():
+            if name in ema_bufs:
+                ema_bufs[name].data.copy_(b.data.to(device=ema_bufs[name].device))
+
+
+# -------------------------
+# Custom Warmup + Cosine LR Scheduler (no PyTorch warning)
+# -------------------------
+
+class WarmupCosineLR:
+    """
+    Per-optimizer-update LR schedule.
+    - Sets LR for update #0 at initialization (warmup start factor).
+    - After each optimizer update, call step() to set LR for the next update.
+    """
+    def __init__(
+        self,
+        optimizer: torch.optim.Optimizer,
+        base_lrs: Optional[list] = None,
+        total_updates: int = 1000,
+        warmup_updates: int = 0,
+        min_lr: float = 1e-6,
+        warmup_start_factor: float = 0.01,
+    ):
+        self.optimizer = optimizer
+        self.total_updates = int(max(1, total_updates))
+        self.warmup_updates = int(max(0, min(warmup_updates, self.total_updates - 1)))
+        self.min_lr = float(min_lr)
+        self.warmup_start_factor = float(warmup_start_factor)
+
+        if base_lrs is None:
+            base_lrs = [pg["lr"] for pg in optimizer.param_groups]
+        self.base_lrs = [float(x) for x in base_lrs]
+
+        self.update_idx = 0
+        self._set_lr(self._lr_for_update(self.update_idx))
+
+    def _lr_for_update(self, u: int) -> list:
+        if self.warmup_updates > 0 and u < self.warmup_updates:
+            t = u / float(self.warmup_updates)
+            factor = self.warmup_start_factor + (1.0 - self.warmup_start_factor) * t
+            return [max(self.min_lr, lr * factor) for lr in self.base_lrs]
+
+        t = (u - self.warmup_updates) / float(max(1, self.total_updates - self.warmup_updates))
+        t = min(max(t, 0.0), 1.0)
+        cos = 0.5 * (1.0 + math.cos(math.pi * t))
+        return [self.min_lr + (lr - self.min_lr) * cos for lr in self.base_lrs]
+
+    def _set_lr(self, lrs: list):
+        for pg, lr in zip(self.optimizer.param_groups, lrs):
+            pg["lr"] = float(lr)
+
+    def step(self):
+        self.update_idx += 1
+        u = min(self.update_idx, self.total_updates - 1)
+        self._set_lr(self._lr_for_update(u))
+
+    def state_dict(self) -> Dict[str, Any]:
+        return {
+            "total_updates": self.total_updates,
+            "warmup_updates": self.warmup_updates,
+            "min_lr": self.min_lr,
+            "warmup_start_factor": self.warmup_start_factor,
+            "base_lrs": self.base_lrs,
+            "update_idx": self.update_idx,
+        }
+
+    def load_state_dict(self, sd: Dict[str, Any]):
+        self.total_updates = int(sd["total_updates"])
+        self.warmup_updates = int(sd["warmup_updates"])
+        self.min_lr = float(sd["min_lr"])
+        self.warmup_start_factor = float(sd.get("warmup_start_factor", 0.01))
+        self.base_lrs = [float(x) for x in sd["base_lrs"]]
+        self.update_idx = int(sd["update_idx"])
+
+        u = min(self.update_idx, self.total_updates - 1)
+        self._set_lr(self._lr_for_update(u))
+
+
+# -------------------------
+# Optimizer defaults
+# -------------------------
+
+def infer_lr_wd(optimizer_name: str, batch_size: int, lr: float, wd: float) -> Tuple[float, float]:
+    opt = optimizer_name.lower()
+    bs = int(batch_size)
+
+    if wd < 0:
+        if opt == "sgd":
+            wd_eff = 1e-4
+        elif opt == "rmsprop":
+            wd_eff = 4e-5
+        else:  # adamw
+            wd_eff = 1e-3
+    else:
+        wd_eff = wd
+
+    if lr < 0:
+        if opt == "sgd":
+            lr_eff = 0.1 * (bs / 256.0)
+        elif opt == "rmsprop":
+            lr_eff = 0.045 * (bs / 256.0)
+        else:
+            lr_eff = 5e-4
+    else:
+        lr_eff = lr
+
+    return float(lr_eff), float(wd_eff)
+
+def build_optimizer(args, model: nn.Module, lr_eff: float, wd_eff: float) -> torch.optim.Optimizer:
+    opt = args.optimizer.lower()
+    if opt == "sgd":
+        return torch.optim.SGD(
+            model.parameters(),
+            lr=lr_eff,
+            momentum=args.momentum,
+            nesterov=args.nesterov,
+            weight_decay=wd_eff,
+        )
+    if opt == "rmsprop":
+        return torch.optim.RMSprop(
+            model.parameters(),
+            lr=lr_eff,
+            alpha=args.rms_alpha,
+            momentum=args.momentum,
+            eps=args.eps,
+            weight_decay=wd_eff,
+        )
+    if opt == "adamw":
+        return torch.optim.AdamW(
+            model.parameters(),
+            lr=lr_eff,
+            betas=(args.beta1, args.beta2),
+            eps=args.eps,
+            weight_decay=wd_eff,
+        )
+    raise ValueError(f"Unknown optimizer: {args.optimizer}")
+
+
+# -------------------------
+# W&B
+# -------------------------
+
+def init_wandb(args, logger: logging.Logger):
+    """
+    W&B is optional. Returns wandb_run or None.
+    Supports offline and resuming with --wandb_id.
+    """
+    if not args.wandb:
+        return None
+
+    try:
+        import wandb  # type: ignore
+
+        if args.wandb_offline:
+            os.environ["WANDB_MODE"] = "offline"
+
+        init_kwargs = dict(
+            project=args.wandb_project,
+            name=(args.wandb_name or None),
+            config=vars(args),
+        )
+
+        # resume support
+        if args.wandb_id:
+            init_kwargs.update(dict(id=args.wandb_id, resume="allow"))
+
+        run = wandb.init(**init_kwargs)
+
+        # define default x-axis metric for nicer charts
+        try:
+            run.define_metric("global_update")
+            run.define_metric("train/*", step_metric="global_update")
+            run.define_metric("val/*", step_metric="global_update")
+            run.define_metric("lr", step_metric="global_update")
+        except Exception:
+            pass
+
+        logger.info(f"W&B enabled: project={args.wandb_project} name={run.name}")
+        return run
+
+    except Exception as e:
+        logger.info(f"[Warning] W&B init failed: {e}")
+        return None
 
 
 # -------------------------
@@ -121,22 +377,27 @@ def lr_at_epoch(base_lr: float, epoch: int, total_epochs: int, warmup_epochs: in
 
 def train_one_epoch(
     model: nn.Module,
+    model_ema: Optional[ModelEma],
     loader: DataLoader,
     optimizer: torch.optim.Optimizer,
+    scheduler: Optional[WarmupCosineLR],
     device: torch.device,
     epoch: int,
-    global_step: int,
-    scaler: Optional[torch.cuda.amp.GradScaler],
+    global_update: int,
+    scaler: Optional[torch.amp.GradScaler],
     use_amp: bool,
+    criterion: nn.Module,
     aux_weight: float,
-    label_smoothing: float,
-    max_grad_norm: float,
-    log_interval: int,
+    grad_accum: int,
+    clip_grad_norm: float,
+    ema_update_interval: int,
+    log_interval_updates: int,
     wandb_log_interval: int,
+    logger: logging.Logger,
     wandb_run=None,
 ):
     model.train()
-    criterion = nn.CrossEntropyLoss(label_smoothing=float(label_smoothing)).to(device)
+    optimizer.zero_grad(set_to_none=True)
 
     t0 = time.time()
     n_seen = 0
@@ -144,91 +405,119 @@ def train_one_epoch(
     top1_sum = 0.0
     top5_sum = 0.0
 
-    for it, (x, y) in enumerate(loader, start=1):
-        global_step += 1
+    dev_type = "cuda" if device.type == "cuda" else "cpu"
 
+    # track last-step values for W&B
+    last_step_loss = None
+    last_step_top1 = None
+    last_step_top5 = None
+
+    for it, (x, y) in enumerate(loader, start=1):
         x = x.to(device, non_blocking=True)
         y = y.to(device, non_blocking=True)
 
-        optimizer.zero_grad(set_to_none=True)
-
-        if use_amp and device.type == "cuda":
-            autocast_ctx = torch.autocast(device_type="cuda", dtype=torch.float16, enabled=True)
-        else:
-            autocast_ctx = torch.autocast(device_type="cpu", enabled=False)
-
-        with autocast_ctx:
+        with torch.amp.autocast(dev_type, enabled=(use_amp and dev_type == "cuda")):
             outputs = model(x)
             logits, aux = unpack_inception_outputs(outputs)
             loss = criterion(logits, y)
-            if aux is not None:
-                loss = loss + float(aux_weight) * criterion(aux, y)
+            if aux is not None and aux_weight > 0:
+                loss = loss + aux_weight * criterion(aux, y)
 
-        if scaler is not None:
-            scaler.scale(loss).backward()
-            if max_grad_norm > 0:
-                scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
-            scaler.step(optimizer)
-            scaler.update()
+            loss_scaled = loss / max(1, grad_accum)
+
+        if scaler is not None and scaler.is_enabled():
+            scaler.scale(loss_scaled).backward()
         else:
-            loss.backward()
-            if max_grad_norm > 0:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
-            optimizer.step()
+            loss_scaled.backward()
 
-        bs = x.size(0)
-        n_seen += bs
-        loss_sum += float(loss.detach().item()) * bs
+        # stats
+        with torch.no_grad():
+            bs = x.size(0)
+            n_seen += bs
+            loss_sum += float(loss.item()) * bs
 
-        acc = accuracy_topk(logits.detach(), y.detach(), topk=(1, 5))
-        top1_sum += acc["top1"] * bs
-        top5_sum += acc["top5"] * bs
+            acc = accuracy_topk(logits.detach(), y.detach(), topk=(1, 5))
+            top1_sum += acc["top1"] * bs
+            top5_sum += acc["top5"] * bs
 
-        # Console logging
-        if log_interval > 0 and (it % log_interval == 0):
-            dt = time.time() - t0
-            cur_loss = loss_sum / max(1, n_seen)
-            cur_top1 = top1_sum / max(1, n_seen)
-            cur_top5 = top5_sum / max(1, n_seen)
-            cur_lr = get_lr(optimizer)
+            last_step_loss = float(loss.item())
+            last_step_top1 = float(acc["top1"])
+            last_step_top5 = float(acc["top5"])
 
-            print(
-                f"[Train][E{epoch:03d}][{it:05d}/{len(loader):05d}] "
-                f"step={global_step} lr={cur_lr:.6g} "
-                f"loss={cur_loss:.4f} top1={cur_top1:.2f} top5={cur_top5:.2f} "
-                f"({dt:.1f}s)",
-                flush=True,
-            )
+        do_update = (it % grad_accum == 0) or (it == len(loader))
+        if do_update:
+            # optimizer step first
+            if scaler is not None and scaler.is_enabled():
+                if clip_grad_norm > 0:
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad_norm)
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                if clip_grad_norm > 0:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad_norm)
+                optimizer.step()
 
-        # wandb step logging (separate interval to reduce I/O)
-        if wandb_run is not None and wandb_log_interval > 0 and (global_step % wandb_log_interval == 0):
-            cur_loss = loss_sum / max(1, n_seen)
-            cur_top1 = top1_sum / max(1, n_seen)
-            cur_top5 = top5_sum / max(1, n_seen)
-            wandb_run.log(
-                {
-                    "train/iter_loss_avg": cur_loss,
-                    "train/iter_top1_avg": cur_top1,
-                    "train/iter_top5_avg": cur_top5,
-                    "train/lr": get_lr(optimizer),
-                    "train/epoch": epoch,
-                },
-                step=global_step,
-            )
+            optimizer.zero_grad(set_to_none=True)
+            global_update += 1
+
+            # scheduler sets lr for NEXT update
+            if scheduler is not None:
+                scheduler.step()
+
+            # EMA update
+            if model_ema is not None and ema_update_interval > 0 and (global_update % ema_update_interval == 0):
+                model_ema.update(model)
+
+            cur_lr = optimizer.param_groups[0]["lr"]
+
+            # console/file log
+            if log_interval_updates > 0 and (global_update % log_interval_updates == 0):
+                dt = time.time() - t0
+                imgs_per_s = n_seen / max(1e-9, dt)
+                logger.info(
+                    f"[Train][E{epoch:03d}][upd {global_update:07d}] "
+                    f"lr={cur_lr:.6g} loss={loss_sum/max(1,n_seen):.4f} "
+                    f"top1={top1_sum/max(1,n_seen):.2f} top5={top5_sum/max(1,n_seen):.2f} "
+                    f"imgs/s={imgs_per_s:.1f}"
+                )
+
+            # W&B log (update-based)
+            if wandb_run is not None and wandb_log_interval > 0 and (global_update % wandb_log_interval == 0):
+                payload = {
+                    "global_update": global_update,
+                    "epoch": epoch + it / max(1, len(loader)),
+                    "lr": cur_lr,
+                    # instantaneous (last update)
+                    "train/step_loss": last_step_loss,
+                    "train/step_top1": last_step_top1,
+                    "train/step_top5": last_step_top5,
+                    # running avg
+                    "train/avg_loss": loss_sum / max(1, n_seen),
+                    "train/avg_top1": top1_sum / max(1, n_seen),
+                    "train/avg_top5": top5_sum / max(1, n_seen),
+                }
+
+                # optional: GPU mem stats
+                if device.type == "cuda":
+                    try:
+                        payload["sys/gpu_mem_alloc_gb"] = torch.cuda.memory_allocated(device) / (1024**3)
+                        payload["sys/gpu_mem_reserved_gb"] = torch.cuda.memory_reserved(device) / (1024**3)
+                    except Exception:
+                        pass
+
+                wandb_run.log(payload, step=global_update)
 
     return {
         "loss": loss_sum / max(1, n_seen),
         "top1": top1_sum / max(1, n_seen),
         "top5": top5_sum / max(1, n_seen),
-    }, global_step
+    }, global_update
 
 
 @torch.no_grad()
-def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, label_smoothing: float):
+def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, criterion: nn.Module):
     model.eval()
-    criterion = nn.CrossEntropyLoss(label_smoothing=float(label_smoothing)).to(device)
-
     n_seen = 0
     loss_sum = 0.0
     top1_sum = 0.0
@@ -244,9 +533,9 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, label_s
 
         bs = x.size(0)
         n_seen += bs
-        loss_sum += float(loss.detach().item()) * bs
+        loss_sum += float(loss.item()) * bs
 
-        acc = accuracy_topk(logits.detach(), y.detach(), topk=(1, 5))
+        acc = accuracy_topk(logits, y, topk=(1, 5))
         top1_sum += acc["top1"] * bs
         top5_sum += acc["top5"] * bs
 
@@ -258,318 +547,323 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, label_s
 
 
 # -------------------------
-# Main
+# Argparse
 # -------------------------
 
 def build_argparser():
-    p = argparse.ArgumentParser("Train Inception-v3 scratch on gray3 ImageNet-1k (ImageFolder) + wandb")
+    p = argparse.ArgumentParser("Inception-v3 gray ImageNet training (single GPU)")
 
-    # ---- paths (no required; all defaults) ----
-    p.add_argument("--train_dir", type=str, default="./imagenet1k_gray3_export/gray3/train")
-    p.add_argument("--val_dir", type=str, default="./imagenet1k_gray3_export/gray3/val")
-    p.add_argument("--output_dir", type=str, default="./inceptionv3_gray3_scratch")
+    # data / io
+    p.add_argument("--train_dir", type=str, default="./imagenet1k_export/gray3/train")
+    p.add_argument("--val_dir", type=str, default="./imagenet1k_export/gray3/val")
+    p.add_argument("--output_dir", type=str, default="./0102_inceptionv3_sgd_gray3")
+    p.add_argument("--log_file", type=str, default="train.log")
 
-    p.add_argument("--device", type=str, default="cuda:0")
+    # runtime
+    p.add_argument("--device", type=str, default="cuda:6")
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--deterministic", action=argparse.BooleanOptionalAction, default=False)
 
-    p.add_argument("--epochs", type=int, default=10000)
-    p.add_argument("--batch_size", type=int, default=256)
-    p.add_argument("--workers", type=int, default=4)
-
+    # training
+    p.add_argument("--epochs", type=int, default=1000)
+    p.add_argument("--batch_size", type=int, default=128)
+    p.add_argument("--workers", type=int, default=8)
     p.add_argument("--input_size", type=int, default=299)
-    p.add_argument("--no_aug", action="store_true")
+    p.add_argument("--grad_accum", type=int, default=1)
+    p.add_argument("--clip_grad_norm", type=float, default=1.0)
 
-    p.add_argument("--mean", type=float, nargs=3, default=[0.5, 0.5, 0.5])
-    p.add_argument("--std", type=float, nargs=3, default=[0.5, 0.5, 0.5])
+    # toggles (match your log defaults)
+    p.add_argument("--amp", action=argparse.BooleanOptionalAction, default=True)
+    p.add_argument("--tf32", action=argparse.BooleanOptionalAction, default=True)
+    p.add_argument("--ema", action=argparse.BooleanOptionalAction, default=True)
+    p.add_argument("--randaug", action=argparse.BooleanOptionalAction, default=True)
+    p.add_argument("--force_gray3", action=argparse.BooleanOptionalAction, default=True)
 
-    p.add_argument("--lr", type=float, default=0.4)
-    p.add_argument("--momentum", type=float, default=0.9)
-    p.add_argument("--weight_decay", type=float, default=1e-4)
-    p.add_argument("--max_grad_norm", type=float, default=0.0)
-    p.add_argument("--label_smoothing", type=float, default=0.0)
-
-    p.add_argument("--warmup_epochs", type=int, default=5)
-
-    p.add_argument("--aux_logits", action="store_true")
+    # inception options
+    p.add_argument("--aux_logits", action=argparse.BooleanOptionalAction, default=True)
     p.add_argument("--aux_weight", type=float, default=0.4)
 
-    p.add_argument("--amp", action="store_true")
+    # norm (your computed stats)
+    p.add_argument("--mean", type=float, nargs=3, default=[0.45798322587856827] * 3)
+    p.add_argument("--std", type=float, nargs=3, default=[0.2623006911570552] * 3)
 
-    # Separate intervals
-    p.add_argument("--log_interval", type=int, default=50, help="Console print interval in iterations.")
-    p.add_argument("--wandb_log_interval", type=int, default=200, help="wandb step log interval in global steps (0 disables).")
+    # augment
+    p.add_argument("--randaug_num_ops", type=int, default=2)
+    p.add_argument("--randaug_magnitude", type=int, default=9)
 
-    p.add_argument("--save_every", type=int, default=200)
+    # optimizer
+    p.add_argument("--optimizer", type=str, default="sgd", choices=["sgd", "adamw", "rmsprop"])
+    p.add_argument("--lr", type=float, default=0.05,
+                   help="Base LR. If <0, uses default depending on optimizer & batch size.")
+    p.add_argument("--weight_decay", type=float, default=1e-4,
+                   help="Weight decay. If <0, uses optimizer-appropriate default.")
+    p.add_argument("--momentum", type=float, default=0.9)
+    p.add_argument("--nesterov", action=argparse.BooleanOptionalAction, default=True)
+    p.add_argument("--beta1", type=float, default=0.9)
+    p.add_argument("--beta2", type=float, default=0.999)
+    p.add_argument("--rms_alpha", type=float, default=0.9)
+    p.add_argument("--eps", type=float, default=1e-8)
+
+    # scheduler
+    p.add_argument("--warmup_epochs", type=int, default=5)
+    p.add_argument("--min_lr", type=float, default=1e-6)
+    p.add_argument("--warmup_start_factor", type=float, default=0.01)
+
+    # ema
+    p.add_argument("--ema_decay", type=float, default=0.9999)
+    p.add_argument("--ema_update_interval", type=int, default=1)
+
+    # loss
+    p.add_argument("--label_smoothing", type=float, default=0.1)
+
+    # checkpoint
     p.add_argument("--resume", type=str, default="")
-    p.add_argument("--save_best_only", action="store_true")
+    p.add_argument("--save_best_only", action=argparse.BooleanOptionalAction, default=False)
 
-    # ---- wandb args ----
-    p.add_argument("--wandb", action="store_false", help="Enable Weights & Biases logging.")
-    p.add_argument("--wandb_project", type=str, default="imagenet-gray3")
+    # W&B
+    p.add_argument("--wandb", action=argparse.BooleanOptionalAction, default=True)
+    p.add_argument("--wandb_project", type=str, default="0102-imagenet-gray3")
     p.add_argument("--wandb_name", type=str, default="")
-    p.add_argument("--wandb_entity", type=str, default="", help="Optional: wandb entity/team.")
-    p.add_argument("--wandb_tags", type=str, nargs="*", default=[], help="Optional: wandb tags.")
-    p.add_argument("--wandb_offline", action="store_true", help="Set WANDB_MODE=offline.")
-    p.add_argument("--wandb_dir", type=str, default="", help="Optional wandb dir (defaults to output_dir).")
+    p.add_argument("--wandb_offline", action=argparse.BooleanOptionalAction, default=False)
+    p.add_argument("--wandb_id", type=str, default="", help="If set, resume W&B run with this id.")
+    p.add_argument("--wandb_log_interval", type=int, default=50)
 
     return p
 
 
+# -------------------------
+# Main
+# -------------------------
+
 def main():
     args = build_argparser().parse_args()
 
-    set_seed(args.seed)
     device = resolve_device(args.device)
-    cudnn.benchmark = True
+    set_seed(args.seed, deterministic=args.deterministic)
 
     out_dir = Path(args.output_dir)
-    ensure_dir(out_dir)
     ensure_dir(out_dir / "ckpts")
+    logger = setup_logger(out_dir / args.log_file)
 
-    # ---- wandb init (optional) ----
-    wandb_run = None
-    if args.wandb:
-        if args.wandb_offline:
-            os.environ["WANDB_MODE"] = "offline"
+    # TF32 + cudnn
+    if device.type == "cuda":
+        torch.backends.cuda.matmul.allow_tf32 = bool(args.tf32)
+        torch.backends.cudnn.allow_tf32 = bool(args.tf32)
+        if not args.deterministic:
+            cudnn.benchmark = True
 
-        try:
-            import wandb
-            run_name = args.wandb_name if args.wandb_name else f"inceptionv3-gray3-scratch-bs{args.batch_size}-lr{args.lr}"
-            wb_kwargs = {
-                "project": args.wandb_project,
-                "name": run_name,
-                "config": vars(args),
-                "dir": (args.wandb_dir if args.wandb_dir else str(out_dir)),
-                "resume": "allow",
-            }
-            if args.wandb_entity:
-                wb_kwargs["entity"] = args.wandb_entity
+    # W&B init
+    wandb_run = init_wandb(args, logger)
 
-            wandb_run = wandb.init(**wb_kwargs)
-            if args.wandb_tags:
-                wandb_run.tags = tuple(args.wandb_tags)
-
-        except Exception as e:
-            print(f"[Warn] wandb init failed. Proceeding without wandb. ({e})", flush=True)
-            wandb_run = None
-
-    # Transforms
-    mean = tuple(float(x) for x in args.mean)
-    std = tuple(float(x) for x in args.std)
+    # transforms
+    mean = tuple(args.mean)
+    std = tuple(args.std)
     normalize = T.Normalize(mean=mean, std=std)
 
-    if args.no_aug:
-        train_tf = T.Compose([
-            T.Resize(args.input_size + 32, interpolation=T.InterpolationMode.BICUBIC, antialias=True),
-            T.CenterCrop(args.input_size),
-            T.ToTensor(),
-            normalize,
-        ])
-    else:
-        train_tf = T.Compose([
-            T.RandomResizedCrop(
-                args.input_size,
-                scale=(0.08, 1.0),
-                ratio=(3/4, 4/3),
-                interpolation=T.InterpolationMode.BICUBIC,
-                antialias=True,
-            ),
-            T.RandomHorizontalFlip(p=0.5),
-            T.ToTensor(),
-            normalize,
-        ])
+    train_tf_list = []
+    if args.force_gray3:
+        train_tf_list.append(ForceGray3())
+    train_tf_list.extend([
+        T.RandomResizedCrop(args.input_size, interpolation=T.InterpolationMode.BICUBIC, antialias=True),
+        T.RandomHorizontalFlip(),
+    ])
+    if args.randaug:
+        train_tf_list.append(T.RandAugment(num_ops=args.randaug_num_ops, magnitude=args.randaug_magnitude))
+    train_tf_list.extend([T.ToTensor(), normalize])
+    train_tf = T.Compose(train_tf_list)
 
-    val_tf = T.Compose([
-        T.Resize(args.input_size + 32, interpolation=T.InterpolationMode.BICUBIC, antialias=True),
+    val_tf_list = []
+    if args.force_gray3:
+        val_tf_list.append(ForceGray3())
+    val_tf_list.extend([
+        T.Resize(int(args.input_size * 1.14), interpolation=T.InterpolationMode.BICUBIC, antialias=True),
         T.CenterCrop(args.input_size),
         T.ToTensor(),
         normalize,
     ])
+    val_tf = T.Compose(val_tf_list)
 
-    # Datasets
+    # datasets
     train_ds = ImageFolder(args.train_dir, transform=train_tf)
-    val_ds   = ImageFolder(args.val_dir, transform=val_tf)
+    val_ds = ImageFolder(args.val_dir, transform=val_tf)
     num_classes = len(train_ds.classes)
 
-    print(f"[Info] train={len(train_ds)} val={len(val_ds)} classes={num_classes}", flush=True)
-    print(f"[Info] device={device} amp={args.amp and device.type=='cuda'} aux_logits={args.aux_logits}", flush=True)
-    print(f"[Info] normalize mean={mean} std={std}", flush=True)
+    pin = (device.type == "cuda")
+    dl_kwargs = dict(
+        num_workers=args.workers,
+        pin_memory=pin,
+        persistent_workers=(args.workers > 0),
+        drop_last=True,
+    )
+    if args.workers > 0:
+        dl_kwargs["prefetch_factor"] = 4
 
     train_loader = DataLoader(
         train_ds,
         batch_size=args.batch_size,
         shuffle=True,
-        num_workers=args.workers,
-        pin_memory=(device.type == "cuda"),
-        drop_last=True,
-        persistent_workers=(args.workers > 0),
+        **dl_kwargs,
     )
     val_loader = DataLoader(
         val_ds,
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=args.workers,
-        pin_memory=(device.type == "cuda"),
-        drop_last=False,
+        pin_memory=pin,
         persistent_workers=(args.workers > 0),
+        drop_last=False,
+        prefetch_factor=4 if args.workers > 0 else None,
     )
 
-    # Model (scratch)
+    logger.info(f"Dataset: {len(train_ds)} train, {len(val_ds)} val | classes={num_classes}")
+    logger.info(f"Device: {device} | amp={args.amp} | tf32={args.tf32} | ema={args.ema} | randaug={args.randaug} | force_gray3={args.force_gray3}")
+    logger.info(f"Norm: mean={mean}, std={std}")
+
+    # model
     model = torchvision.models.inception_v3(
         weights=None,
-        aux_logits=args.aux_logits,
+        aux_logits=bool(args.aux_logits),
         transform_input=False,
-        init_weights=True,
         num_classes=num_classes,
+        init_weights=True,
     ).to(device)
 
-    # Optim
-    optimizer = torch.optim.SGD(
-        model.parameters(),
-        lr=float(args.lr),
-        momentum=float(args.momentum),
-        weight_decay=float(args.weight_decay),
-        nesterov=True,
+    # optimizer
+    lr_eff, wd_eff = infer_lr_wd(args.optimizer, args.batch_size, args.lr, args.weight_decay)
+    optimizer = build_optimizer(args, model, lr_eff=lr_eff, wd_eff=wd_eff)
+
+    # updates/epoch (drop_last=True) + schedule
+    steps_per_epoch = len(train_loader)
+    updates_per_epoch = (steps_per_epoch + max(1, args.grad_accum) - 1) // max(1, args.grad_accum)
+    total_updates = int(args.epochs * updates_per_epoch)
+    warmup_updates = int(args.warmup_epochs * updates_per_epoch)
+
+    scheduler = WarmupCosineLR(
+        optimizer=optimizer,
+        base_lrs=[lr_eff for _ in optimizer.param_groups],
+        total_updates=total_updates,
+        warmup_updates=warmup_updates,
+        min_lr=args.min_lr,
+        warmup_start_factor=args.warmup_start_factor,
     )
 
-    # AMP
-    use_amp = bool(args.amp and device.type == "cuda")
-    scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+    logger.info(f"Optimizer={args.optimizer} | lr={lr_eff:g} | wd={wd_eff:g} | updates/epoch={updates_per_epoch} total_updates={total_updates} warmup_updates={warmup_updates}")
 
-    # Resume
+    # loss
+    criterion = nn.CrossEntropyLoss(label_smoothing=args.label_smoothing).to(device)
+
+    # AMP scaler (new API)
+    use_amp = bool(args.amp) and (device.type == "cuda")
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp) if device.type == "cuda" else None
+
+    # EMA
+    model_ema = ModelEma(model, decay=args.ema_decay, device=device) if args.ema else None
+
+    # resume
     start_epoch = 0
-    best_top1 = -1.0
-    global_step = 0
+    global_update = 0
+    best_top1 = 0.0
 
     if args.resume:
-        ckpt = torch.load(args.resume, map_location="cpu")
-        model.load_state_dict(ckpt["model"], strict=True)
-        optimizer.load_state_dict(ckpt["optim"])
-        if "scaler" in ckpt and ckpt["scaler"] is not None and use_amp:
-            scaler.load_state_dict(ckpt["scaler"])
-        start_epoch = int(ckpt.get("epoch", -1)) + 1
-        best_top1 = float(ckpt.get("best_top1", -1.0))
-        global_step = int(ckpt.get("global_step", 0))
-        print(f"[Resume] start_epoch={start_epoch} best_top1={best_top1:.2f} global_step={global_step}", flush=True)
+        ckpt_path = Path(args.resume)
+        if ckpt_path.is_file():
+            ckpt = torch.load(ckpt_path, map_location="cpu")
+            model.load_state_dict(ckpt["model"], strict=True)
+            if model_ema is not None and ckpt.get("model_ema") is not None:
+                model_ema.module.load_state_dict(ckpt["model_ema"], strict=True)
+            optimizer.load_state_dict(ckpt["optimizer"])
+            if ckpt.get("scheduler") is not None:
+                scheduler.load_state_dict(ckpt["scheduler"])
+            if ckpt.get("scaler") is not None and scaler is not None:
+                scaler.load_state_dict(ckpt["scaler"])
 
-    # Save config
+            start_epoch = int(ckpt.get("epoch", -1)) + 1
+            global_update = int(ckpt.get("global_update", 0))
+            best_top1 = float(ckpt.get("best_top1", 0.0))
+            logger.info(f"Resumed from {ckpt_path} | start_epoch={start_epoch} global_update={global_update} best_top1={best_top1:.2f}")
+        else:
+            logger.info(f"[Warning] resume checkpoint not found: {ckpt_path}")
+
+    # save config
     save_json(out_dir / "config.json", vars(args))
 
-    # wandb meta
-    if wandb_run is not None:
-        wandb_run.log(
-            {
-                "meta/num_classes": num_classes,
-                "meta/train_size": len(train_ds),
-                "meta/val_size": len(val_ds),
-                "meta/params": count_parameters(model),
-                "meta/aux_logits": bool(args.aux_logits),
-                "meta/input_size": int(args.input_size),
-            },
-            step=global_step,
-        )
-
-    # Training loop
+    # training loop
     for epoch in range(start_epoch, args.epochs):
-        lr = lr_at_epoch(float(args.lr), epoch, args.epochs, args.warmup_epochs)
-        set_lr(optimizer, lr)
+        log_interval_updates = max(1, updates_per_epoch // 10)
 
-        tr, global_step = train_one_epoch(
+        tr_stats, global_update = train_one_epoch(
             model=model,
+            model_ema=model_ema,
             loader=train_loader,
             optimizer=optimizer,
+            scheduler=scheduler,
             device=device,
             epoch=epoch,
-            global_step=global_step,
-            scaler=scaler if use_amp else None,
+            global_update=global_update,
+            scaler=scaler,
             use_amp=use_amp,
-            aux_weight=float(args.aux_weight),
-            label_smoothing=float(args.label_smoothing),
-            max_grad_norm=float(args.max_grad_norm),
-            log_interval=int(args.log_interval),
+            criterion=criterion,
+            aux_weight=(args.aux_weight if args.aux_logits else 0.0),
+            grad_accum=max(1, args.grad_accum),
+            clip_grad_norm=float(args.clip_grad_norm),
+            ema_update_interval=int(args.ema_update_interval),
+            log_interval_updates=log_interval_updates,
             wandb_log_interval=int(args.wandb_log_interval),
+            logger=logger,
             wandb_run=wandb_run,
         )
 
-        va = evaluate(
-            model=model,
-            loader=val_loader,
-            device=device,
-            label_smoothing=float(args.label_smoothing),
-        )
+        eval_model = model_ema.module if model_ema is not None else model
+        val_stats = evaluate(eval_model, val_loader, device, criterion)
 
-        is_best = va["top1"] > best_top1
+        is_best = val_stats["top1"] > best_top1
         if is_best:
-            best_top1 = va["top1"]
+            best_top1 = val_stats["top1"]
 
-        print(
-            f"[Epoch {epoch:03d}] step={global_step} lr={get_lr(optimizer):.6g} "
-            f"train: loss={tr['loss']:.4f} top1={tr['top1']:.2f} top5={tr['top5']:.2f} | "
-            f"val: loss={va['loss']:.4f} top1={va['top1']:.2f} top5={va['top5']:.2f} | "
-            f"best_top1={best_top1:.2f}",
-            flush=True,
+        logger.info(
+            f"[Epoch {epoch:03d}] "
+            f"TrainLoss={tr_stats['loss']:.4f} "
+            f"ValLoss={val_stats['loss']:.4f} ValTop1={val_stats['top1']:.2f}% ValTop5={val_stats['top5']:.2f}% "
+            f"(BestTop1={best_top1:.2f}%)"
         )
 
-        # JSONL log
-        log_line = {
-            "epoch": epoch,
-            "global_step": global_step,
-            "lr": get_lr(optimizer),
-            "train": tr,
-            "val": va,
-            "best_top1": best_top1,
-        }
-        with (out_dir / "train_log.jsonl").open("a", encoding="utf-8") as f:
-            f.write(json.dumps(log_line, ensure_ascii=False) + "\n")
-
-        # wandb epoch-level log (always once per epoch)
+        # W&B epoch log
         if wandb_run is not None:
             wandb_run.log(
                 {
-                    "epoch/train_loss": tr["loss"],
-                    "epoch/train_top1": tr["top1"],
-                    "epoch/train_top5": tr["top5"],
-                    "epoch/val_loss": va["loss"],
-                    "epoch/val_top1": va["top1"],
-                    "epoch/val_top5": va["top5"],
-                    "epoch/best_top1": best_top1,
-                    "train/lr": get_lr(optimizer),
-                    "train/epoch": epoch,
+                    "global_update": global_update,
+                    "val/loss": val_stats["loss"],
+                    "val/top1": val_stats["top1"],
+                    "val/top5": val_stats["top5"],
+                    "val/best_top1": best_top1,
+                    "epoch_int": epoch,
                 },
-                step=global_step,
+                step=global_update,
             )
 
-        # Save checkpoints
-        ckpt_obj = {
+        ckpt = {
             "epoch": epoch,
-            "global_step": global_step,
+            "global_update": global_update,
             "best_top1": best_top1,
             "model": model.state_dict(),
-            "optim": optimizer.state_dict(),
-            "scaler": scaler.state_dict() if use_amp else None,
+            "model_ema": (model_ema.module.state_dict() if model_ema is not None else None),
+            "optimizer": optimizer.state_dict(),
+            "scheduler": scheduler.state_dict() if scheduler is not None else None,
+            "scaler": scaler.state_dict() if scaler is not None else None,
             "classes": train_ds.classes,
-            "normalize_mean": mean,
-            "normalize_std": std,
-            "aux_logits": bool(args.aux_logits),
+            "args": vars(args),
         }
 
-        torch.save(ckpt_obj, out_dir / "ckpts" / "last.pt")
-
-        if args.save_best_only:
-            if is_best:
-                torch.save(ckpt_obj, out_dir / "ckpts" / "best.pt")
-        else:
-            if args.save_every > 0 and ((epoch + 1) % args.save_every == 0 or is_best):
-                name = "best.pt" if is_best else f"epoch{epoch:03d}.pt"
-                torch.save(ckpt_obj, out_dir / "ckpts" / name)
+        if not args.save_best_only:
+            torch.save(ckpt, out_dir / "ckpts" / "last.pt")
+        if is_best:
+            torch.save(ckpt, out_dir / "ckpts" / "best.pt")
 
     if wandb_run is not None:
         try:
             wandb_run.finish()
         except Exception:
             pass
-
-    print(f"[Done] best_top1={best_top1:.2f}", flush=True)
 
 
 if __name__ == "__main__":

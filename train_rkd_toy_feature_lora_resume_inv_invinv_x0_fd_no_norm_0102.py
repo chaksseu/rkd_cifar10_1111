@@ -10,7 +10,7 @@ Student (x0 predictor) distillation with Feature-based losses (Pixel, Inception,
   - SAME loss (trajectory shrink regularizer)
 
 Dependencies:
-  - pip install diffusers transformers torch torchvision pytorch-fid
+  - pip install diffusers transformers torch torchvision pytorch-fid peft
 """
 
 import os
@@ -32,7 +32,7 @@ import torchvision.models as models
 from PIL import Image
 
 from diffusers import UNet2DModel, DDPMScheduler, DDIMScheduler, DDIMInverseScheduler
-from peft import LoraConfig, get_peft_model
+from peft import LoraConfig, get_peft_model, PeftModel  # PeftModel 추가됨
 
 # ------------------------- Feature Extraction Utils -------------------------
 
@@ -55,12 +55,10 @@ class FeatureEmbedder(nn.Module):
 
         elif mode == 'inception':
             print(f"[Embedder] Loading InceptionV3...", flush=True)
-            # inception_v3 expects input normalized by mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
             weights = models.Inception_V3_Weights.DEFAULT
             self.net = models.inception_v3(weights=weights).to(device)
-            self.net.fc = nn.Identity()  # Remove classification head to get features (2048)
+            self.net.fc = nn.Identity()  # Remove classification head
             self.net.dropout = nn.Identity()
-            # [추가] 파라미터 Freeze (그래디언트 계산 방지)
             for p in self.net.parameters():
                 p.requires_grad = False
             self.net.eval()
@@ -71,15 +69,11 @@ class FeatureEmbedder(nn.Module):
             print(f"[Embedder] Loading CLIP ({clip_model_name})...", flush=True)
             from transformers import CLIPModel, CLIPProcessor
             self.net = CLIPModel.from_pretrained(clip_model_name).vision_model.to(device)
-            self.processor = CLIPProcessor.from_pretrained(clip_model_name)
-            # [추가] 파라미터 Freeze (그래디언트 계산 방지)
+            # self.processor = CLIPProcessor.from_pretrained(clip_model_name)
             for p in self.net.parameters():
                 p.requires_grad = False
             self.net.eval()
 
-            # CLIP preprocessor usually creates mean/std constants. 
-            # We will implement manual resize & norm for speed within torch.
-            # OpenAI CLIP mean/std
             self.mean = torch.tensor([0.48145466, 0.4578275, 0.40821073], device=device).view(1, 3, 1, 1)
             self.std = torch.tensor([0.26862954, 0.26130258, 0.27577711], device=device).view(1, 3, 1, 1)
 
@@ -91,40 +85,24 @@ class FeatureEmbedder(nn.Module):
         Input x: (N, 3, H, W) in range [-1, 1]
         Output: (N, D) feature vector
         """
-        # 1. Pixel Mode
         if self.mode == 'pixel':
             return x.reshape(x.shape[0], -1)
 
         # Common Prep: [-1, 1] -> [0, 1]
         x_01 = (x + 1) * 0.5
 
-        # 2. Inception Mode
         if self.mode == 'inception':
-            # Resize to 299x299
             x_up = F.interpolate(x_01, size=(299, 299), mode='bilinear', align_corners=False, antialias=True)
-            # Normalize
             x_norm = (x_up - self.mean) / self.std
-            # with torch.no_grad():
-            # Inception v3 forward returns InceptionOutputs, logits is index 0
-            # But since we replaced fc with Identity, it returns the pooled features directly if aux_logits=False
-            # However, torchvision inception forward handles aux logits internally.
             if self.net.training:
-                # Force eval mode just in case, though we set it in init
                 self.net.eval()
             out = self.net(x_norm)
-            # out is (N, 2048)
             return out
 
-        # 3. CLIP Mode
         if self.mode == 'clip':
-            # Resize to 224x224
             x_up = F.interpolate(x_01, size=(224, 224), mode='bilinear', align_corners=False, antialias=True)
-            # Normalize
             x_norm = (x_up - self.mean) / self.std
-            # with torch.no_grad():
             outputs = self.net(pixel_values=x_norm)
-            # pooler_output: (N, hidden_size) e.g., 768 or 1024
-            # last_hidden_state: (N, seq_len, hidden_size)
             embeds = outputs.pooler_output
             return embeds
 
@@ -145,9 +123,6 @@ def to_grid(images: torch.Tensor, nrow: int = 4) -> Image.Image:
     return Image.fromarray(grid)
 
 def save_tensor_batch_to_dir(x: torch.Tensor, out_dir: Path, start_idx: int):
-    """
-    x: [-1,1] (N,3,H,W) -> save as PNG 8-bit.
-    """
     ensure_dir(out_dir)
     x01 = (x.clamp(-1, 1) + 1) / 2.0
     x255 = (x01 * 255.0).clamp(0, 255).byte().cpu()
@@ -156,12 +131,9 @@ def save_tensor_batch_to_dir(x: torch.Tensor, out_dir: Path, start_idx: int):
         Image.fromarray(arr).save(out_dir / f"gen_{start_idx + i:06d}.png")
 
 def pdist_vec(x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
-    # x: (N, D)
     return torch.pdist(x, p=2).clamp_min(eps)
 
 def cdist_vec(x: torch.Tensor, y: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
-    # x, y: (N, D) -> returns diagonal distances or full cdist flattened?
-    # Original code used flatten cdist.
     return torch.cdist(x, y, p=2).reshape(-1).clamp_min(eps)
 
 def set_seed(seed: int):
@@ -172,20 +144,13 @@ def set_seed(seed: int):
     torch.cuda.manual_seed_all(seed)
 
 def mean_from_vectors(vectors: List[torch.Tensor], device: torch.device, eps: float = 1e-12) -> torch.Tensor:
-    """
-    Single-GPU mean over a list of 1D tensors (detached), used for mean-normalization.
-    """
     if len(vectors) == 0:
         return torch.tensor(1.0, device=device)
-
     s = torch.zeros((), device=device, dtype=torch.float64)
     c = torch.zeros((), device=device, dtype=torch.float64)
-
     for vv in vectors:
-        # vv = v#.detach()
         s = s + vv.sum().to(torch.float64)
         c = c + torch.tensor(float(vv.numel()), device=device, dtype=torch.float64)
-
     m = (s / c.clamp_min(1.0)).to(torch.float32)
     return m.clamp_min(eps)
 
@@ -411,9 +376,6 @@ def compute_losses(
     T_last_img = preds_T[-1]
     S_last_img = preds_S[-1]
     
-    # Pre-extract features for static targets to save computation if reused
-    # But often in loop we extract dynamically.
-    
     # Helper to extract features or return flatten pixels
     def get_feats(img):
         return embedder(img)
@@ -453,8 +415,6 @@ def compute_losses(
     invinv_s = invinv_t = None
     if args.w_invinv != 0.0:
         # INVINV: pdist within batch for Real vs Inverted
-        # Note: Optimization here is tricky if using feature space, usually done on pixels.
-        # But if requested, we use features.
         f_real = get_feats(x0_real) if (args.w_inv == 0.0) else f_real # reuse if avail
         f_inv = get_feats(x0_inv_T) if (args.w_inv == 0.0) else f_inv
         
@@ -511,8 +471,6 @@ def compute_losses(
     loss_fid = torch.tensor(0.0, device=device)
     fid_s = fid_t = torch.tensor(0.0, device=device)
     if args.w_fid != 0.0:
-        # If embedder is 'pixel', this is pixel FID.
-        # If embedder is 'inception'/'clip', this is Feature FID (closer to real FID).
         S_f = get_feats(S_last_img).float()
         R_f = get_feats(x0_real).float()
         T_f = get_feats(T_last_img).float()
@@ -522,10 +480,7 @@ def compute_losses(
         fid_t = fid_gaussian_torch(T_f, I_f, eps=args.fid_eps)
         loss_fid = fid_s + fid_t
 
-    # ---- SAME (Trajectory Regularization) - typically kept in Pixel Space ----
-    # Keeping SAME in pixel space makes more sense for visual consistency, 
-    # but if you want it in feature space, wrap xs with get_feats.
-    # Here we keep it in pixel space as it's a trajectory shrinking regularizer.
+    # ---- SAME (Trajectory Regularization) ----
     loss_same = torch.tensor(0.0, device=device)
     if args.w_same != 0.0:
         xs = torch.stack(preds_S, dim=0)  # [K,B,3,H,W]
@@ -564,10 +519,10 @@ def build_loss_logs(total_loss: torch.Tensor, stats: dict, args) -> dict:
         raw = (weighted / w) if (w != 0.0) else raw_val
         return weighted, raw
 
-    rkd_raw    = float(stats["loss_rkd"].item())
-    inv_raw    = float(stats["loss_inv"].item())
+    rkd_raw     = float(stats["loss_rkd"].item())
+    inv_raw     = float(stats["loss_inv"].item())
     invinv_raw = float(stats["loss_invinv"].item())
-    fid_raw    = float(stats["loss_fid"].item())
+    fid_raw     = float(stats["loss_fid"].item())
     fid_s_raw  = float(stats["fid_s"].item())
     fid_t_raw  = float(stats["fid_t"].item())
     same_raw   = float(stats["loss_same"].item())
@@ -829,41 +784,60 @@ def train(args):
     ddim_T = make_ddim(ddpm, prediction_type="epsilon")
     ddim_S = make_ddim(ddpm, prediction_type="epsilon")
 
-    # ---- Student ----
-    print(f"[Info] Initializing Student from Teacher weights and applying LoRA...", flush=True)
-    # 1. Student를 Teacher 경로에서 로드 (Teacher와 동일하게 초기화)
+    # ---- Student Initialization (Modified for Resume) ----
+    print(f"[Info] Initializing Student...", flush=True)
+    # 1. Base Student를 Teacher 경로에서 로드 (Teacher와 동일한 아키텍처/가중치로 시작)
     student = UNet2DModel.from_pretrained(teacher_dir.as_posix()).to(device)
-    # 2. 기존 파라미터 Freeze (학습되지 않도록 설정)
     student.requires_grad_(False)
-    # 3. LoRA Config 설정
-    # target_modules는 Diffusers UNet의 Attention 모듈들을 타겟팅합니다.
-    lora_config = LoraConfig(
-        r=32,               # LoRA Rank (필요에 따라 조절, 예: 4, 8, 16)
-        lora_alpha=32,      # Alpha 값 (통상 r의 2배)
-        target_modules=["to_q", "to_k", "to_v", "to_out.0"], 
-        init_lora_weights="gaussian",
-    )
-    # 4. Student 모델에 LoRA 적용 (이 시점부터 student는 PeftModel이 됩니다)
-    student = get_peft_model(student, lora_config)
     
-    # 5. 학습 가능한 파라미터 출력 (확인용)
-    student.print_trainable_parameters()
+    global_step = 0
 
-    # 6. Train 모드 전환
+    # 2. 체크포인트 재개 여부 확인
+    if args.resume_checkpoint and os.path.exists(args.resume_checkpoint):
+        print(f"[Info] Resuming from checkpoint: {args.resume_checkpoint}", flush=True)
+        # 기존 저장된 LoRA 어댑터 로드
+        student = PeftModel.from_pretrained(student, args.resume_checkpoint, is_trainable=True)
+        
+        # Step 파싱 (폴더 이름에서 step 숫자 추출, 예: ckpt_step002000)
+        try:
+            ckpt_name = Path(args.resume_checkpoint).name
+            if "step" in ckpt_name:
+                global_step = int(ckpt_name.split("step")[-1])
+                print(f"[Info] Resuming at global_step = {global_step}", flush=True)
+            else:
+                print(f"[Warn] Could not parse global_step from '{ckpt_name}'. Starting from 0.")
+        except Exception as e:
+            print(f"[Warn] Error parsing global_step: {e}. Starting from 0.")
+            
+    else:
+        # 3. 새로 시작 (New LoRA Init)
+        print(f"[Info] Starting new training (initializing LoRA)...", flush=True)
+        lora_config = LoraConfig(
+            r=32,               # LoRA Rank
+            lora_alpha=32,      # Alpha
+            target_modules=["to_q", "to_k", "to_v", "to_out.0"], 
+            init_lora_weights="gaussian",
+        )
+        student = get_peft_model(student, lora_config)
+    
+    # 4. Train 모드 전환 및 확인
+    student.print_trainable_parameters()
     student.train()
 
     print(f"[Info] Teacher params: {count_parameters(teacher):,}", flush=True)
     print(f"[Info] Student params: {count_parameters(student):,}", flush=True)
 
-    # PEFT 모델이 알아서 trainable(LoRA) 파라미터만 넘겨줍니다.
     optimizer = torch.optim.AdamW(student.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     optimizer.zero_grad(set_to_none=True)
 
-    global_step = 0
+    # global_step은 위에서 설정됨 (0 또는 resume value)
+    start_epoch = 1
+    # 간단한 근사: epoch도 step에 비례하여 대략적으로 맞춤 (optional)
+    # start_epoch = global_step // len(loader) + 1 
 
-    for epoch in range(1, args.epochs + 1):
+    for epoch in range(start_epoch, args.epochs + 1):
         student.train()
-        print(f"[Epoch {epoch}] start", flush=True)
+        print(f"[Epoch {epoch}] start (Global Step: {global_step})", flush=True)
 
         for it, x0_real in enumerate(loader, start=1):
             if args.ddim_steps_min == args.ddim_steps_max:
@@ -1002,7 +976,7 @@ CLASSN = 10
 RKD_METRIC="clip" # pixel inception clip
 CUDA_NUM = 5
 LR=1e-5
-DATE="1229"
+DATE="0102"
 
 RKD_W = 0.1
 INV_W = 0.1
@@ -1013,11 +987,13 @@ SAME_W = 0.0
 def build_argparser():
     p = argparse.ArgumentParser("Student x0 distillation with Feature-based losses")
 
+    p.add_argument("--resume_checkpoint", type=str, default="", help="Path to checkpoint folder to resume training from (e.g. out/.../ckpt_step002000)")
+
     p.add_argument("--student_data_dir", type=str, default="cifar10_student_data_n10/gray3/train")
     p.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test")
     p.add_argument("--teacher_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
     p.add_argument("--student_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
-    p.add_argument("--output_dir", type=str, default=f"out_{DATE}_rkd/rkd_{RKD_METRIC}_lora_feature_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}_LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
+    p.add_argument("--output_dir", type=str, default=f"out_{DATE}_rkd/rkd_{RKD_METRIC}_lora_feature_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}_LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps-resume")
 
     # Metric Selection for RKD/INV
     p.add_argument("--rkd_metric", type=str, default=RKD_METRIC, choices=["pixel", "inception", "clip"], 
@@ -1027,7 +1003,7 @@ def build_argparser():
 
     p.add_argument("--device", type=str, default=f"cuda:{CUDA_NUM}")
     p.add_argument("--project", type=str, default=f"rkd-feature-cifar10-rgb-to-gray-{DATE}")
-    p.add_argument("--run_name", type=str, default=f"student-lora-{RKD_METRIC}-x0-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
+    p.add_argument("--run_name", type=str, default=f"student-lora-{RKD_METRIC}-x0-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps-resume")
     p.add_argument("--wandb_offline", action="store_true")
     p.add_argument("--mixed_precision", type=str, default="fp16", choices=["no", "fp16", "bf16"])
 

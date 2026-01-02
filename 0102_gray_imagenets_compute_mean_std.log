@@ -1,0 +1,60 @@
+2026-01-02 01:09:23 | INFO | ===== Mean / Std computation started =====
+2026-01-02 01:09:23 | INFO | Train dir: ./imagenet1k_export/gray3/train
+2026-01-02 01:09:25 | INFO | Dataset loaded: 1285705 images
+2026-01-02 01:09:25 | INFO | Batch size: 1024, Workers: 64
+2026-01-02 01:09:25 | INFO | Input size: 299x299
+2026-01-02 01:10:12 | INFO | ===== Mean / Std computation started =====
+2026-01-02 01:10:12 | INFO | Train dir: ./imagenet1k_export/gray3/train
+2026-01-02 01:10:14 | INFO | Dataset loaded: 1285705 images
+2026-01-02 01:10:14 | INFO | Batch size: 1024, Workers: 64
+2026-01-02 01:10:14 | INFO | Input size: 299x299
+2026-01-02 01:11:35 | INFO | ===== Mean / Std computation started =====
+2026-01-02 01:11:35 | INFO | Train dir: ./imagenet1k_export/gray3/train
+2026-01-02 01:11:37 | INFO | Dataset loaded: 1285705 images
+2026-01-02 01:11:37 | INFO | Batch size: 1024, Workers: 32
+2026-01-02 01:11:37 | INFO | Input size: 299x299
+2026-01-02 01:13:09 | INFO | ===== Mean / Std computation started =====
+2026-01-02 01:13:09 | INFO | Train dir: ./imagenet1k_export/gray3/train
+2026-01-02 01:13:10 | INFO | Dataset loaded: 1285705 images
+2026-01-02 01:13:10 | INFO | Batch size: 2048, Workers: 16
+2026-01-02 01:13:10 | INFO | Input size: 299x299
+2026-01-02 01:14:18 | INFO | ===== Mean / Std computation started =====
+2026-01-02 01:14:18 | INFO | Train dir: ./imagenet1k_export/gray3/train
+2026-01-02 01:14:19 | INFO | Dataset loaded: 1285705 images
+2026-01-02 01:14:19 | INFO | Batch size: 1024, Workers: 32
+2026-01-02 01:14:19 | INFO | Input size: 299x299
+2026-01-02 01:18:01 | INFO | Processed 51200/1285705 images (4,577,331,200 pixels)
+2026-01-02 01:33:36 | INFO | ===== Mean / Std computation started =====
+2026-01-02 01:33:36 | INFO | Train dir: ./imagenet1k_export/gray3/train
+2026-01-02 01:33:38 | INFO | Dataset loaded: 1285684 images
+2026-01-02 01:33:38 | INFO | Batch size: 1024, Workers: 32
+2026-01-02 01:33:38 | INFO | Input size: 299x299
+2026-01-02 01:37:14 | INFO | Processed 51200/1285684 images (4,577,331,200 pixels)
+2026-01-02 01:39:44 | INFO | Processed 102400/1285684 images (9,154,662,400 pixels)
+2026-01-02 01:42:22 | INFO | Processed 153600/1285684 images (13,731,993,600 pixels)
+2026-01-02 01:44:53 | INFO | Processed 204800/1285684 images (18,309,324,800 pixels)
+2026-01-02 01:47:28 | INFO | Processed 256000/1285684 images (22,886,656,000 pixels)
+2026-01-02 01:50:08 | INFO | Processed 307200/1285684 images (27,463,987,200 pixels)
+2026-01-02 01:52:41 | INFO | Processed 358400/1285684 images (32,041,318,400 pixels)
+2026-01-02 01:55:13 | INFO | Processed 409600/1285684 images (36,618,649,600 pixels)
+2026-01-02 01:57:54 | INFO | Processed 460800/1285684 images (41,195,980,800 pixels)
+2026-01-02 02:00:31 | INFO | Processed 512000/1285684 images (45,773,312,000 pixels)
+2026-01-02 02:03:05 | INFO | Processed 563200/1285684 images (50,350,643,200 pixels)
+2026-01-02 02:05:37 | INFO | Processed 614400/1285684 images (54,927,974,400 pixels)
+2026-01-02 02:08:19 | INFO | Processed 665600/1285684 images (59,505,305,600 pixels)
+2026-01-02 02:10:54 | INFO | Processed 716800/1285684 images (64,082,636,800 pixels)
+2026-01-02 02:13:30 | INFO | Processed 768000/1285684 images (68,659,968,000 pixels)
+2026-01-02 02:16:06 | INFO | Processed 819200/1285684 images (73,237,299,200 pixels)
+2026-01-02 02:18:47 | INFO | Processed 870400/1285684 images (77,814,630,400 pixels)
+2026-01-02 02:21:58 | INFO | Processed 921600/1285684 images (82,391,961,600 pixels)
+2026-01-02 02:24:45 | INFO | Processed 972800/1285684 images (86,969,292,800 pixels)
+2026-01-02 02:27:48 | INFO | Processed 1024000/1285684 images (91,546,624,000 pixels)
+2026-01-02 02:30:50 | INFO | Processed 1075200/1285684 images (96,123,955,200 pixels)
+2026-01-02 02:33:44 | INFO | Processed 1126400/1285684 images (100,701,286,400 pixels)
+2026-01-02 02:37:03 | INFO | Processed 1177600/1285684 images (105,278,617,600 pixels)
+2026-01-02 02:40:23 | INFO | Processed 1228800/1285684 images (109,855,948,800 pixels)
+2026-01-02 02:43:09 | INFO | Processed 1280000/1285684 images (114,433,280,000 pixels)
+2026-01-02 02:43:28 | INFO | ===== Computation finished =====
+2026-01-02 02:43:28 | INFO | num_images = 1285684
+2026-01-02 02:43:28 | INFO | mean = [0.45798322587856827, 0.45798322587856827, 0.45798322587856827]
+2026-01-02 02:43:28 | INFO | std  = [0.2623006911570552, 0.2623006911570552, 0.2623006911570552]
