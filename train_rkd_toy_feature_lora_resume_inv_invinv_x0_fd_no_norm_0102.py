@@ -378,9 +378,9 @@ def invert_x0_to_zT_deterministic_x0pred(student, ddim_S, x0, steps, device) -> 
     student.train()
     xt = x0
     for t in inv.timesteps:
-        t_b = torch.full((xt.shape[0],), int(t), device=device, dtype=torch.long)
+        # t_b = torch.full((xt.shape[0],), int(t), device=device, dtype=torch.long)
         latent_in = inv.scale_model_input(xt, t)
-        eps = student(latent_in, t_b).sample
+        eps = student(latent_in, t).sample
         xt = inv.step(eps, t, xt).prev_sample
     return xt
 
@@ -1043,7 +1043,7 @@ def train(args):
 BATCH_SIZE = 8
 CLASSN = 10
 RKD_METRIC="dinov3" # pixel inception clip dinov3
-CUDA_NUM = 7
+CUDA_NUM = 2
 LR=1e-5
 DATE="1229"
 
