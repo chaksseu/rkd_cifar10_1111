@@ -20,6 +20,7 @@ import shutil
 from pathlib import Path
 from typing import List, Optional
 from contextlib import nullcontext
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -80,7 +81,7 @@ class FeatureEmbedder(nn.Module):
 
         if mode == "clip":
             print(f"[Embedder] Loading CLIP ({clip_model_name})...", flush=True)
-            self.net = CLIPModel.from_pretrained(clip_model_name).vision_model.to(device)
+            self.net = CLIPModel.from_pretrained(clip_model_name, use_safetensors=True).vision_model.to(device)
             for p in self.net.parameters():
                 p.requires_grad = False
             self.net.eval()
@@ -1075,12 +1076,12 @@ def train(args):
 
 # ------------------------- Args -------------------------
 
-BATCH_SIZE = 8
+BATCH_SIZE = 1
 CLASSN = 10
-RKD_METRIC="dinov3" # pixel inception clip dinov3
-CUDA_NUM = 2
+RKD_METRIC="clip" # pixel inception clip dinov3
+CUDA_NUM = 0
 LR=1e-5
-DATE="1229"
+DATE="0102"
 
 RKD_W = 0.1
 INV_W = 0.1
