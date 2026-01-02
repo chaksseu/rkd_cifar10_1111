@@ -34,79 +34,143 @@ from PIL import Image
 from diffusers import UNet2DModel, DDPMScheduler, DDIMScheduler, DDIMInverseScheduler
 from peft import LoraConfig, get_peft_model, PeftModel  # PeftModel 추가됨
 
+# HuggingFace
+from transformers import AutoModel, AutoImageProcessor, CLIPModel
+
 # ------------------------- Feature Extraction Utils -------------------------
 
 class FeatureEmbedder(nn.Module):
     """
     Extracts features from images for RKD/Distance computations.
     Modes:
-      - 'pixel': Flatten raw pixels (default behavior).
-      - 'inception': InceptionV3 features (2048 dim). Resizes to 299x299.
-      - 'clip': CLIP image embeddings. Resizes to 224x224.
+      - 'pixel'    : Flatten raw pixels
+      - 'inception': InceptionV3 features (2048 dim), resize 299
+      - 'clip'     : CLIP vision embeddings, resize 224
+      - 'dinov3'   : DINOv3 embeddings (HF AutoModel), resize based on image processor (typically 224)
     """
-    def __init__(self, mode: str, device: torch.device, clip_model_name: str = "openai/clip-vit-base-patch32"):
+    def __init__(
+        self,
+        mode: str,
+        device: torch.device,
+        clip_model_name: str = "openai/clip-vit-base-patch32",
+        dino_model_name: str = "facebook/dinov3-vitb16-pretrain-lvd1689m",
+    ):
         super().__init__()
         self.mode = mode
         self.device = device
         self.feature_dim = -1
 
-        if mode == 'pixel':
-            pass  # Nothing to load
+        if mode == "pixel":
+            self.net = None
+            return
 
-        elif mode == 'inception':
-            print(f"[Embedder] Loading InceptionV3...", flush=True)
+        if mode == "inception":
+            print("[Embedder] Loading InceptionV3...", flush=True)
             weights = models.Inception_V3_Weights.DEFAULT
             self.net = models.inception_v3(weights=weights).to(device)
-            self.net.fc = nn.Identity()  # Remove classification head
+            self.net.fc = nn.Identity()
             self.net.dropout = nn.Identity()
             for p in self.net.parameters():
                 p.requires_grad = False
             self.net.eval()
             self.mean = torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1)
-            self.std = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
+            self.std  = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
+            self.target_size = (299, 299)
+            return
 
-        elif mode == 'clip':
+        if mode == "clip":
             print(f"[Embedder] Loading CLIP ({clip_model_name})...", flush=True)
-            from transformers import CLIPModel, CLIPProcessor
             self.net = CLIPModel.from_pretrained(clip_model_name).vision_model.to(device)
-            # self.processor = CLIPProcessor.from_pretrained(clip_model_name)
+            for p in self.net.parameters():
+                p.requires_grad = False
+            self.net.eval()
+            self.mean = torch.tensor([0.48145466, 0.4578275, 0.40821073], device=device).view(1, 3, 1, 1)
+            self.std  = torch.tensor([0.26862954, 0.26130258, 0.27577711], device=device).view(1, 3, 1, 1)
+            self.target_size = (224, 224)
+            return
+
+        if mode == "dinov3":
+            print(f"[Embedder] Loading DINOv3 ({dino_model_name})...", flush=True)
+            # Processor에서 size/mean/std를 가져오면 모델별 전처리와 최대한 일치
+            try:
+                proc = AutoImageProcessor.from_pretrained(dino_model_name)
+            except Exception as e:
+                print(f"[Warn] AutoImageProcessor load failed ({e}). Falling back to ImageNet mean/std and 224.", flush=True)
+                proc = None
+
+            self.net = AutoModel.from_pretrained(dino_model_name).to(device)
             for p in self.net.parameters():
                 p.requires_grad = False
             self.net.eval()
 
-            self.mean = torch.tensor([0.48145466, 0.4578275, 0.40821073], device=device).view(1, 3, 1, 1)
-            self.std = torch.tensor([0.26862954, 0.26130258, 0.27577711], device=device).view(1, 3, 1, 1)
+            if proc is not None and hasattr(proc, "image_mean") and hasattr(proc, "image_std"):
+                mean = proc.image_mean
+                std = proc.image_std
+            else:
+                mean = [0.485, 0.456, 0.406]
+                std = [0.229, 0.224, 0.225]
 
-        else:
-            raise ValueError(f"Unknown metric mode: {mode}")
+            self.mean = torch.tensor(mean, device=device).view(1, 3, 1, 1)
+            self.std  = torch.tensor(std,  device=device).view(1, 3, 1, 1)
+
+            # size 처리(모델/processor별로 dict/int 형태가 달라질 수 있어 방어적으로)
+            target = 224
+            if proc is not None and hasattr(proc, "size"):
+                sz = proc.size
+                if isinstance(sz, dict):
+                    # 일반적으로 {"height":224,"width":224} 또는 {"shortest_edge":224}
+                    if "height" in sz and "width" in sz:
+                        self.target_size = (int(sz["height"]), int(sz["width"]))
+                    elif "shortest_edge" in sz:
+                        target = int(sz["shortest_edge"])
+                        self.target_size = (target, target)
+                    else:
+                        self.target_size = (target, target)
+                elif isinstance(sz, int):
+                    self.target_size = (int(sz), int(sz))
+                else:
+                    self.target_size = (target, target)
+            else:
+                self.target_size = (target, target)
+
+            return
+
+        raise ValueError(f"Unknown metric mode: {mode}. Use one of ['pixel','inception','clip','dinov3'].")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Input x: (N, 3, H, W) in range [-1, 1]
         Output: (N, D) feature vector
         """
-        if self.mode == 'pixel':
+        if self.mode == "pixel":
             return x.reshape(x.shape[0], -1)
 
-        # Common Prep: [-1, 1] -> [0, 1]
+        # [-1,1] -> [0,1]
         x_01 = (x + 1) * 0.5
 
-        if self.mode == 'inception':
-            x_up = F.interpolate(x_01, size=(299, 299), mode='bilinear', align_corners=False, antialias=True)
-            x_norm = (x_up - self.mean) / self.std
-            if self.net.training:
-                self.net.eval()
-            out = self.net(x_norm)
-            return out
+        # resize + normalize
+        x_up = F.interpolate(x_01, size=self.target_size, mode="bilinear", align_corners=False, antialias=True)
+        x_norm = (x_up - self.mean) / self.std
 
-        if self.mode == 'clip':
-            x_up = F.interpolate(x_01, size=(224, 224), mode='bilinear', align_corners=False, antialias=True)
-            x_norm = (x_up - self.mean) / self.std
+        if self.mode == "inception":
+            # torchvision inception forward expects tensor input directly
+            return self.net(x_norm)
+
+        if self.mode == "clip":
             outputs = self.net(pixel_values=x_norm)
-            embeds = outputs.pooler_output
-            return embeds
+            return outputs.pooler_output  # (N, D)
 
+        if self.mode == "dinov3":
+            outputs = self.net(pixel_values=x_norm)
+            # 모델에 따라 pooler_output이 있거나 없을 수 있음
+            if hasattr(outputs, "pooler_output") and outputs.pooler_output is not None:
+                return outputs.pooler_output
+            # 없으면 CLS 토큰 사용
+            return outputs.last_hidden_state[:, 0, :]
+
+        # fallback
         return x.reshape(x.shape[0], -1)
+
 
 # ------------------------- Utils -------------------------
 
@@ -696,7 +760,12 @@ def train(args):
 
     # Init Feature Embedder (for RKD/Losses)
     print(f"[Info] Initializing RKD Feature Embedder: {args.rkd_metric}", flush=True)
-    embedder = FeatureEmbedder(mode=args.rkd_metric, device=device, clip_model_name=args.clip_model_name)
+    embedder = FeatureEmbedder(
+        mode=args.rkd_metric,
+        device=device,
+        clip_model_name=args.clip_model_name,
+        dino_model_name=args.dino_model_name,
+    )
 
     # wandb (optional)
     wandb_run = None
@@ -973,15 +1042,15 @@ def train(args):
 
 BATCH_SIZE = 8
 CLASSN = 10
-RKD_METRIC="clip" # pixel inception clip
-CUDA_NUM = 5
+RKD_METRIC="dinov3" # pixel inception clip dinov3
+CUDA_NUM = 7
 LR=1e-5
-DATE="0102"
+DATE="1229"
 
 RKD_W = 0.1
 INV_W = 0.1
 INVINV_W = 1.0
-FD_W = 0.0001
+FD_W = 0.00001
 SAME_W = 0.0
 
 def build_argparser():
@@ -993,17 +1062,34 @@ def build_argparser():
     p.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test")
     p.add_argument("--teacher_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
     p.add_argument("--student_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
-    p.add_argument("--output_dir", type=str, default=f"out_{DATE}_rkd/rkd_{RKD_METRIC}_lora_feature_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}_LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps-resume")
+    p.add_argument("--output_dir", type=str, default=f"out_{DATE}_rkd/rkd_{RKD_METRIC}_lora_feature_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}_LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
 
     # Metric Selection for RKD/INV
-    p.add_argument("--rkd_metric", type=str, default=RKD_METRIC, choices=["pixel", "inception", "clip"], 
-                   help="Metric space for RKD/INV losses: 'pixel', 'inception', 'clip'.")
-    p.add_argument("--clip_model_name", type=str, default="openai/clip-vit-base-patch32", 
-                   help="HuggingFace model name for CLIP if rkd_metric='clip'")
+    p.add_argument(
+        "--rkd_metric",
+        type=str,
+        default=RKD_METRIC,
+        choices=["pixel", "inception", "clip", "dinov3"],
+        help="Metric space for RKD/INV losses: 'pixel', 'inception', 'clip', 'dinov3'.",
+    )
+
+    p.add_argument(
+        "--dino_model_name",
+        type=str,
+        default="facebook/dinov3-vitb16-pretrain-lvd1689m",
+        help="HuggingFace model name for DINOv3 (requires transformers>=4.56.0).",
+    )
+
+    p.add_argument(
+        "--clip_model_name",
+        type=str,
+        default="openai/clip-vit-base-patch32",
+        help="HuggingFace model name for CLIP if rkd_metric='clip'",
+    )
 
     p.add_argument("--device", type=str, default=f"cuda:{CUDA_NUM}")
     p.add_argument("--project", type=str, default=f"rkd-feature-cifar10-rgb-to-gray-{DATE}")
-    p.add_argument("--run_name", type=str, default=f"student-lora-{RKD_METRIC}-x0-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps-resume")
+    p.add_argument("--run_name", type=str, default=f"student-lora-{RKD_METRIC}-x0-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
     p.add_argument("--wandb_offline", action="store_true")
     p.add_argument("--mixed_precision", type=str, default="fp16", choices=["no", "fp16", "bf16"])
 
@@ -1057,6 +1143,7 @@ def build_argparser():
     p.add_argument("--fid_num_samples", type=int, default=0)
     p.add_argument("--fid_per_class", action="store_false")
     p.add_argument("--fid_no_symlink", action="store_true")
+
 
     return p
 
