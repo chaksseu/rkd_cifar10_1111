@@ -1,0 +1,1 @@
+teacher_dir=ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000 test_dir=cifar10_png_linear_only/gray3/test steps=50 eta=0.0 N=10000 fid_dims=2048 fid_batch=64 FID=81.178814

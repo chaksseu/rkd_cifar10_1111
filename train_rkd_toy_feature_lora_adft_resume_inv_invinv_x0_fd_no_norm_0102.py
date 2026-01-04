@@ -1076,18 +1076,18 @@ def train(args):
 
 # ------------------------- Args -------------------------
 
-BATCH_SIZE = 1
+BATCH_SIZE = 8
 CLASSN = 10
 RKD_METRIC="clip" # pixel inception clip dinov3
-CUDA_NUM = 0
+CUDA_NUM = 7
 LR=1e-5
-DATE="0102"
+DATE="1229"
 
 RKD_W = 0.1
 INV_W = 0.1
 INVINV_W = 1.0
-FD_W = 0.00001
-SAME_W = 0.0
+FD_W = 0.0001
+SAME_W = 0.1
 
 def build_argparser():
     p = argparse.ArgumentParser("Student x0 distillation with Feature-based losses")
@@ -1098,7 +1098,7 @@ def build_argparser():
     p.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test")
     p.add_argument("--teacher_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
     p.add_argument("--student_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
-    p.add_argument("--output_dir", type=str, default=f"out_{DATE}_rkd/rkd_{RKD_METRIC}_lora_feature_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}_LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
+    p.add_argument("--output_dir", type=str, default=f"out_{DATE}_rkd/rkd_{RKD_METRIC}_lora_adft_feature_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}_LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
 
     # Metric Selection for RKD/INV
     p.add_argument(
@@ -1125,7 +1125,7 @@ def build_argparser():
 
     p.add_argument("--device", type=str, default=f"cuda:{CUDA_NUM}")
     p.add_argument("--project", type=str, default=f"rkd-feature-cifar10-rgb-to-gray-{DATE}")
-    p.add_argument("--run_name", type=str, default=f"student-lora-{RKD_METRIC}-x0-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
+    p.add_argument("--run_name", type=str, default=f"student-lora-adft-{RKD_METRIC}-x0-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
     p.add_argument("--wandb_offline", action="store_true")
     p.add_argument("--mixed_precision", type=str, default="fp16", choices=["no", "fp16", "bf16"])
 

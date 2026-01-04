@@ -565,12 +565,12 @@ def build_argparser():
     p.add_argument("--deterministic", action=argparse.BooleanOptionalAction, default=False)
 
     # training
-    p.add_argument("--epochs", type=int, default=1000)
+    p.add_argument("--epochs", type=int, default=100)
     p.add_argument("--batch_size", type=int, default=128)
     p.add_argument("--workers", type=int, default=8)
     p.add_argument("--input_size", type=int, default=299)
     p.add_argument("--grad_accum", type=int, default=1)
-    p.add_argument("--clip_grad_norm", type=float, default=1.0)
+    p.add_argument("--clip_grad_norm", type=float, default=2.0)
 
     # toggles (match your log defaults)
     p.add_argument("--amp", action=argparse.BooleanOptionalAction, default=True)
@@ -589,11 +589,11 @@ def build_argparser():
 
     # augment
     p.add_argument("--randaug_num_ops", type=int, default=2)
-    p.add_argument("--randaug_magnitude", type=int, default=9)
+    p.add_argument("--randaug_magnitude", type=int, default=5)
 
     # optimizer
     p.add_argument("--optimizer", type=str, default="sgd", choices=["sgd", "adamw", "rmsprop"])
-    p.add_argument("--lr", type=float, default=0.05,
+    p.add_argument("--lr", type=float, default=0.1,
                    help="Base LR. If <0, uses default depending on optimizer & batch size.")
     p.add_argument("--weight_decay", type=float, default=1e-4,
                    help="Weight decay. If <0, uses optimizer-appropriate default.")
@@ -660,28 +660,64 @@ def main():
     std = tuple(args.std)
     normalize = T.Normalize(mean=mean, std=std)
 
-    train_tf_list = []
-    if args.force_gray3:
-        train_tf_list.append(ForceGray3())
-    train_tf_list.extend([
+    # train_tf_list = []
+    # if args.force_gray3:
+    #     train_tf_list.append(ForceGray3())
+    # train_tf_list.extend([
+    #     T.RandomResizedCrop(args.input_size, interpolation=T.InterpolationMode.BICUBIC, antialias=True),
+    #     T.RandomHorizontalFlip(),
+    # ])
+    # if args.randaug:
+    #     train_tf_list.append(T.RandAugment(num_ops=args.randaug_num_ops, magnitude=args.randaug_magnitude))
+    # train_tf_list.extend([T.ToTensor(), normalize])
+    # train_tf = T.Compose(train_tf_list)
+
+    # val_tf_list = []
+    # if args.force_gray3:
+    #     val_tf_list.append(ForceGray3())
+    # val_tf_list.extend([
+    #     T.Resize(int(args.input_size * 1.14), interpolation=T.InterpolationMode.BICUBIC, antialias=True),
+    #     T.CenterCrop(args.input_size),
+    #     T.ToTensor(),
+    #     normalize,
+    # ])
+    # val_tf = T.Compose(val_tf_list)
+
+    # -------------------------
+    # transforms (recommended)
+    # -------------------------
+    mean = tuple(args.mean)
+    std = tuple(args.std)
+    normalize = T.Normalize(mean=mean, std=std)
+
+    # Train: geometric -> (optional RandAug) -> force gray3 -> tensor/normalize
+    train_tf_list = [
         T.RandomResizedCrop(args.input_size, interpolation=T.InterpolationMode.BICUBIC, antialias=True),
         T.RandomHorizontalFlip(),
-    ])
+    ]
     if args.randaug:
-        train_tf_list.append(T.RandAugment(num_ops=args.randaug_num_ops, magnitude=args.randaug_magnitude))
+        train_tf_list.append(
+            T.RandAugment(num_ops=args.randaug_num_ops, magnitude=args.randaug_magnitude)
+        )
+
+    # IMPORTANT: make the final distribution always gray3 (prevents train/val mismatch)
+    if args.force_gray3:
+        train_tf_list.append(ForceGray3())
+
     train_tf_list.extend([T.ToTensor(), normalize])
     train_tf = T.Compose(train_tf_list)
 
-    val_tf_list = []
-    if args.force_gray3:
-        val_tf_list.append(ForceGray3())
-    val_tf_list.extend([
+    # Val: deterministic -> force gray3 -> tensor/normalize
+    val_tf_list = [
         T.Resize(int(args.input_size * 1.14), interpolation=T.InterpolationMode.BICUBIC, antialias=True),
         T.CenterCrop(args.input_size),
-        T.ToTensor(),
-        normalize,
-    ])
+    ]
+    if args.force_gray3:
+        val_tf_list.append(ForceGray3())
+
+    val_tf_list.extend([T.ToTensor(), normalize])
     val_tf = T.Compose(val_tf_list)
+
 
     # datasets
     train_ds = ImageFolder(args.train_dir, transform=train_tf)
