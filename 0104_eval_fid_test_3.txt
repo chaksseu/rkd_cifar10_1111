@@ -1,0 +1,74 @@
+wandb: Currently logged in as: rtrt505 to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: setting up run 9diu02lz
+wandb: Tracking run with wandb version 0.23.0
+wandb: Run data is saved locally in /workspace/rkd_cifar10_1111/wandb/run-20260104_081622-9diu02lz
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run eval
+wandb: ⭐️ View project at https://wandb.ai/rtrt505/cifar10-gray3-customfid
+wandb: 🚀 View run at https://wandb.ai/rtrt505/cifar10-gray3-customfid/runs/9diu02lz
+[Info] Device=cuda:2 | mixed_precision=fp16
+[Info] Models to evaluate: 29
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step002000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step004000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step006000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step008000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step010000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step012000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step014000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step016000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step018000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step020000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step022000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step024000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step026000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step028000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step030000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step032000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step034000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step036000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step038000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step040000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step042000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step044000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step046000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step048000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step050000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step052000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step054000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step056000
+  - out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/last
+[FID] Flattening real set (10000 imgs) -> eval_fid_out/rkd-lora-finetuning-n10/fid_real_cache/all
+[FID] Flattening real set (1000 imgs) -> eval_fid_out/rkd-lora-finetuning-n10/fid_real_cache/per_class/airplane
+[FID] Flattening real set (1000 imgs) -> eval_fid_out/rkd-lora-finetuning-n10/fid_real_cache/per_class/automobile
+[FID] Flattening real set (1000 imgs) -> eval_fid_out/rkd-lora-finetuning-n10/fid_real_cache/per_class/bird
+[FID] Flattening real set (1000 imgs) -> eval_fid_out/rkd-lora-finetuning-n10/fid_real_cache/per_class/cat
+[FID] Flattening real set (1000 imgs) -> eval_fid_out/rkd-lora-finetuning-n10/fid_real_cache/per_class/deer
+[FID] Flattening real set (1000 imgs) -> eval_fid_out/rkd-lora-finetuning-n10/fid_real_cache/per_class/dog
+[FID] Flattening real set (1000 imgs) -> eval_fid_out/rkd-lora-finetuning-n10/fid_real_cache/per_class/frog
+[FID] Flattening real set (1000 imgs) -> eval_fid_out/rkd-lora-finetuning-n10/fid_real_cache/per_class/horse
+[FID] Flattening real set (1000 imgs) -> eval_fid_out/rkd-lora-finetuning-n10/fid_real_cache/per_class/ship
+[FID] Flattening real set (1000 imgs) -> eval_fid_out/rkd-lora-finetuning-n10/fid_real_cache/per_class/truck
+[FID] Real cache ready: all=10000 @ eval_fid_out/rkd-lora-finetuning-n10/fid_real_cache/all
+[FID] Per-class caches: 10
+[FID] Loading custom InceptionV3 from: 0102-imagenet-gray3/output_adamw_bs256/ckpts/best.pt
+/opt/conda/lib/python3.11/site-packages/torchvision/models/inception.py:43: FutureWarning: The default weight initialization of inception_v3 will be changed in future releases of torchvision. If you wish to keep the old behavior (which leads to long initialization times due to scipy/scipy#11299), please set init_weights=True.
+  warnings.warn(
+[FID] Computing REAL stats (all) ...
+[FID] REAL(all) stats ready: n=10000
+[FID] Computing REAL stats (class=airplane) ...
+[FID] Computing REAL stats (class=automobile) ...
+[FID] Computing REAL stats (class=bird) ...
+[FID] Computing REAL stats (class=cat) ...
+[FID] Computing REAL stats (class=deer) ...
+[FID] Computing REAL stats (class=dog) ...
+[FID] Computing REAL stats (class=frog) ...
+[FID] Computing REAL stats (class=horse) ...
+[FID] Computing REAL stats (class=ship) ...
+[FID] Computing REAL stats (class=truck) ...
+[FID] REAL(per-class) stats ready: 10 classes
+
+===== Evaluating: ckpt_step002000 =====
+[Load] LoRA adapter: out_1229_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.0-teacher-init-eps/ckpts/ckpt_step002000
+[Load] Base UNet:     ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000
+[Sample] Saved grid -> eval_fid_out/rkd-lora-finetuning-n10/ckpt_step002000/samples/grid_ckpt_step002000.png
+[FID] Generating 10000 images -> eval_fid_out/rkd-lora-finetuning-n10/ckpt_step002000/fid/gen_tmp

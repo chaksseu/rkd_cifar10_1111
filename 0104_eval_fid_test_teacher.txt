@@ -1,0 +1,31 @@
+wandb: Currently logged in as: rtrt505 to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: setting up run 6efqnk7m
+wandb: Tracking run with wandb version 0.23.0
+wandb: Run data is saved locally in /workspace/rkd_cifar10_1111/wandb/run-20260104_081945-6efqnk7m
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run eval
+wandb: ⭐️ View project at https://wandb.ai/rtrt505/cifar10-gray3-customfid
+wandb: 🚀 View run at https://wandb.ai/rtrt505/cifar10-gray3-customfid/runs/6efqnk7m
+[Info] Device=cuda:3 | mixed_precision=fp16
+[Info] Models to evaluate: 1
+  - ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000
+[FID] Flattening real set (10000 imgs) -> eval_fid_out/teacher/fid_real_cache/all
+[FID] Flattening real set (1000 imgs) -> eval_fid_out/teacher/fid_real_cache/per_class/airplane
+[FID] Flattening real set (1000 imgs) -> eval_fid_out/teacher/fid_real_cache/per_class/automobile
+[FID] Flattening real set (1000 imgs) -> eval_fid_out/teacher/fid_real_cache/per_class/bird
+[FID] Flattening real set (1000 imgs) -> eval_fid_out/teacher/fid_real_cache/per_class/cat
+[FID] Flattening real set (1000 imgs) -> eval_fid_out/teacher/fid_real_cache/per_class/deer
+[FID] Flattening real set (1000 imgs) -> eval_fid_out/teacher/fid_real_cache/per_class/dog
+[FID] Flattening real set (1000 imgs) -> eval_fid_out/teacher/fid_real_cache/per_class/frog
+[FID] Flattening real set (1000 imgs) -> eval_fid_out/teacher/fid_real_cache/per_class/horse
+[FID] Flattening real set (1000 imgs) -> eval_fid_out/teacher/fid_real_cache/per_class/ship
+[FID] Flattening real set (1000 imgs) -> eval_fid_out/teacher/fid_real_cache/per_class/truck
+[FID] Real cache ready: all=10000 @ eval_fid_out/teacher/fid_real_cache/all
+[FID] Per-class caches: 10
+[FID] Loading custom InceptionV3 from: 0102-imagenet-gray3/output_adamw_bs256/ckpts/best.pt
+/opt/conda/lib/python3.11/site-packages/torchvision/models/inception.py:43: FutureWarning: The default weight initialization of inception_v3 will be changed in future releases of torchvision. If you wish to keep the old behavior (which leads to long initialization times due to scipy/scipy#11299), please set init_weights=True.
+  warnings.warn(
+[FID] Computing REAL stats (all) ...
+[FID] REAL(all) stats ready: n=10000
+[FID] Computing REAL stats (class=airplane) ...
+[FID] Computing REAL stats (class=automobile) ...

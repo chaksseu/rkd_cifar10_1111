@@ -640,20 +640,20 @@ def main():
     p = argparse.ArgumentParser("Generate samples + compute custom-Inception FID (overall + per-class)")
 
     # Models
-    p.add_argument("--model_dirs", type=str, nargs="*", default=[])
+    p.add_argument("--model_dirs", type=str, nargs="*", default=["ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000"])
     p.add_argument("--model_root", type=str, default="")
     p.add_argument("--base_model_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000", help="Required for LoRA adapters: base UNet directory.")
     p.add_argument("--lora_merge", action="store_true")
 
     # Data / output
     p.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test")
-    p.add_argument("--output_dir", type=str, default="eval_fid_out")
+    p.add_argument("--output_dir", type=str, default="eval_fid_out/teacher")
     p.add_argument("--fid_cache_dir", type=str, default="")
     p.add_argument("--fid_symlink_real", action="store_true")
     p.add_argument("--fid_copy_real", action="store_true")
 
     # Device / precision
-    p.add_argument("--device", type=str, default="cuda:0")
+    p.add_argument("--device", type=str, default="cuda:3")
     p.add_argument("--mixed_precision", type=str, default="fp16", choices=["no", "fp16", "bf16"])
 
     # Sampling
@@ -673,13 +673,13 @@ def main():
     p.add_argument("--fid_per_class", action="store_true")
     p.set_defaults(fid_per_class=True)
     p.add_argument("--fid_num_samples", type=int, default=0, help="0 => use ALL real images; else generate this many samples.")
-    p.add_argument("--fid_gen_batch", type=int, default=512)
-    p.add_argument("--fid_batch_size", type=int, default=64)
+    p.add_argument("--fid_gen_batch", type=int, default=2048)
+    p.add_argument("--fid_batch_size", type=int, default=1024)
     p.add_argument("--fid_num_workers", type=int, default=8)
     p.add_argument("--fid_keep_gen", action="store_true")
 
     # Custom Inception for FID
-    p.add_argument("--inception_ckpt", type=str, default="0102_inceptionv3_sgd_gray3/ckpts/best.pt", help="Path to YOUR trained InceptionV3 checkpoint.")
+    p.add_argument("--inception_ckpt", type=str, default="0102-imagenet-gray3/output_adamw_bs256/ckpts/best.pt", help="Path to YOUR trained InceptionV3 checkpoint.")
     p.add_argument("--inception_num_classes", type=int, default=1000)
     p.add_argument("--inception_input_size", type=int, default=299)
     p.add_argument("--inception_mean", type=float, nargs=3, default=[0.45798322587856827] * 3)
