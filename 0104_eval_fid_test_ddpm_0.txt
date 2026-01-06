@@ -1,0 +1,232 @@
+[Info] Device=cuda:0 | mixed_precision=fp16
+[Info] Models to evaluate: 121
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/final_lora
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step005000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step010000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step015000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step020000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step025000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step030000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step035000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step040000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step045000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step050000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step055000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step060000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step065000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step070000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step075000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step080000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step085000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step090000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step095000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step100000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step105000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step110000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step115000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step120000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step125000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step130000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step135000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step140000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step145000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step150000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step155000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step160000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step165000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step170000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step175000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step180000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step185000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step190000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step195000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step200000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step205000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step210000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step215000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step220000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step225000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step230000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step235000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step240000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step245000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step250000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step255000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step260000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step265000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step270000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step275000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step280000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step285000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step290000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step295000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step300000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step305000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step310000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step315000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step320000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step325000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step330000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step335000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step340000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step345000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step350000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step355000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step360000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step365000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step370000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step375000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step380000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step385000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step390000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step395000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step400000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step405000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step410000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step415000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step420000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step425000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step430000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step435000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step440000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step445000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step450000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step455000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step460000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step465000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step470000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step475000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step480000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step485000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step490000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step495000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step500000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step505000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step510000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step515000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step520000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step525000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step530000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step535000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step540000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step545000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step550000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step555000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step560000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step565000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step570000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step575000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step580000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step585000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step590000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step595000
+  - /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step600000
+[FID] Flattening real set (10000 imgs) -> eval_fid_out/ddpm_lora_n10/fid_real_cache/all
+[FID] Real cache ready: all=10000 @ eval_fid_out/ddpm_lora_n10/fid_real_cache/all
+[FID] Loading custom InceptionV3 from: 0102-imagenet-gray3/output_adamw_bs256/ckpts/best.pt
+/opt/conda/lib/python3.11/site-packages/torchvision/models/inception.py:43: FutureWarning: The default weight initialization of inception_v3 will be changed in future releases of torchvision. If you wish to keep the old behavior (which leads to long initialization times due to scipy/scipy#11299), please set init_weights=True.
+  warnings.warn(
+[FID] Computing REAL stats (all) ...
+[FID] REAL(all) stats ready: n=10000
+
+===== Evaluating: final_lora =====
+[Load] LoRA adapter: /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/final_lora
+[Load] Base UNet:     ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000
+[Sample] Saved grid -> eval_fid_out/ddpm_lora_n10/final_lora/samples/grid_final_lora.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_lora_n10/final_lora/fid/gen_tmp
+[FID] final_lora | overall FID = 2.5470 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_lora_n10/final_lora/fid/gen_tmp
+
+===== Evaluating: lora_step005000 =====
+[Load] LoRA adapter: /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step005000
+[Load] Base UNet:     ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000
+[Sample] Saved grid -> eval_fid_out/ddpm_lora_n10/lora_step005000/samples/grid_lora_step005000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_lora_n10/lora_step005000/fid/gen_tmp
+[FID] lora_step005000 | overall FID = 1.9151 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_lora_n10/lora_step005000/fid/gen_tmp
+
+===== Evaluating: lora_step010000 =====
+[Load] LoRA adapter: /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step010000
+[Load] Base UNet:     ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000
+[Sample] Saved grid -> eval_fid_out/ddpm_lora_n10/lora_step010000/samples/grid_lora_step010000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_lora_n10/lora_step010000/fid/gen_tmp
+[FID] lora_step010000 | overall FID = 1.9128 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_lora_n10/lora_step010000/fid/gen_tmp
+
+===== Evaluating: lora_step015000 =====
+[Load] LoRA adapter: /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step015000
+[Load] Base UNet:     ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000
+[Sample] Saved grid -> eval_fid_out/ddpm_lora_n10/lora_step015000/samples/grid_lora_step015000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_lora_n10/lora_step015000/fid/gen_tmp
+[FID] lora_step015000 | overall FID = 1.9105 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_lora_n10/lora_step015000/fid/gen_tmp
+
+===== Evaluating: lora_step020000 =====
+[Load] LoRA adapter: /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step020000
+[Load] Base UNet:     ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000
+[Sample] Saved grid -> eval_fid_out/ddpm_lora_n10/lora_step020000/samples/grid_lora_step020000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_lora_n10/lora_step020000/fid/gen_tmp
+[FID] lora_step020000 | overall FID = 1.8924 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_lora_n10/lora_step020000/fid/gen_tmp
+
+===== Evaluating: lora_step025000 =====
+[Load] LoRA adapter: /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step025000
+[Load] Base UNet:     ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000
+[Sample] Saved grid -> eval_fid_out/ddpm_lora_n10/lora_step025000/samples/grid_lora_step025000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_lora_n10/lora_step025000/fid/gen_tmp
+[FID] lora_step025000 | overall FID = 1.8473 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_lora_n10/lora_step025000/fid/gen_tmp
+
+===== Evaluating: lora_step030000 =====
+[Load] LoRA adapter: /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step030000
+[Load] Base UNet:     ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000
+[Sample] Saved grid -> eval_fid_out/ddpm_lora_n10/lora_step030000/samples/grid_lora_step030000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_lora_n10/lora_step030000/fid/gen_tmp
+[FID] lora_step030000 | overall FID = 1.8249 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_lora_n10/lora_step030000/fid/gen_tmp
+
+===== Evaluating: lora_step035000 =====
+[Load] LoRA adapter: /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step035000
+[Load] Base UNet:     ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000
+[Sample] Saved grid -> eval_fid_out/ddpm_lora_n10/lora_step035000/samples/grid_lora_step035000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_lora_n10/lora_step035000/fid/gen_tmp
+[FID] lora_step035000 | overall FID = 1.8269 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_lora_n10/lora_step035000/fid/gen_tmp
+
+===== Evaluating: lora_step040000 =====
+[Load] LoRA adapter: /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step040000
+[Load] Base UNet:     ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000
+[Sample] Saved grid -> eval_fid_out/ddpm_lora_n10/lora_step040000/samples/grid_lora_step040000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_lora_n10/lora_step040000/fid/gen_tmp
+[FID] lora_step040000 | overall FID = 1.7577 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_lora_n10/lora_step040000/fid/gen_tmp
+
+===== Evaluating: lora_step045000 =====
+[Load] LoRA adapter: /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step045000
+[Load] Base UNet:     ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000
+[Sample] Saved grid -> eval_fid_out/ddpm_lora_n10/lora_step045000/samples/grid_lora_step045000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_lora_n10/lora_step045000/fid/gen_tmp
+[FID] lora_step045000 | overall FID = 1.8457 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_lora_n10/lora_step045000/fid/gen_tmp
+
+===== Evaluating: lora_step050000 =====
+[Load] LoRA adapter: /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step050000
+[Load] Base UNet:     ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000
+[Sample] Saved grid -> eval_fid_out/ddpm_lora_n10/lora_step050000/samples/grid_lora_step050000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_lora_n10/lora_step050000/fid/gen_tmp
+[FID] lora_step050000 | overall FID = 1.8296 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_lora_n10/lora_step050000/fid/gen_tmp
+
+===== Evaluating: lora_step055000 =====
+[Load] LoRA adapter: /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step055000
+[Load] Base UNet:     ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000
+[Sample] Saved grid -> eval_fid_out/ddpm_lora_n10/lora_step055000/samples/grid_lora_step055000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_lora_n10/lora_step055000/fid/gen_tmp
+[FID] lora_step055000 | overall FID = 1.8732 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_lora_n10/lora_step055000/fid/gen_tmp
+
+===== Evaluating: lora_step060000 =====
+[Load] LoRA adapter: /workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step060000
+[Load] Base UNet:     ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000
+[Sample] Saved grid -> eval_fid_out/ddpm_lora_n10/lora_step060000/samples/grid_lora_step060000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_lora_n10/lora_step060000/fid/gen_tmp

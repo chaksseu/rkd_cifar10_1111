@@ -1,0 +1,301 @@
+wandb: Currently logged in as: rtrt505 to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: setting up run uj13736n
+wandb: Tracking run with wandb version 0.23.0
+wandb: Run data is saved locally in /workspace/rkd_cifar10_1111/wandb/run-20260104_083016-uj13736n
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run all_finetuning_n10
+wandb: ⭐️ View project at https://wandb.ai/rtrt505/cifar10-gray3-customfid
+wandb: 🚀 View run at https://wandb.ai/rtrt505/cifar10-gray3-customfid/runs/uj13736n
+[Info] Device=cuda:0 | mixed_precision=fp16
+[Info] Models to evaluate: 41
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step002000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step004000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step006000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step008000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step010000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step012000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step014000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step016000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step018000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step020000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step022000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step024000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step026000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step028000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step030000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step032000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step034000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step036000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step038000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step040000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step042000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step044000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step046000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step048000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step050000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step052000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step054000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step056000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step058000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step060000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step062000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step064000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step066000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step068000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step070000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step072000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step074000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step076000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step078000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step080000
+  - out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/last
+[FID] Flattening real set (10000 imgs) -> eval_fid_out/all_finetuning_n10/fid_real_cache/all
+[FID] Real cache ready: all=10000 @ eval_fid_out/all_finetuning_n10/fid_real_cache/all
+[FID] Loading custom InceptionV3 from: 0102-imagenet-gray3/output_adamw_bs256/ckpts/best.pt
+/opt/conda/lib/python3.11/site-packages/torchvision/models/inception.py:43: FutureWarning: The default weight initialization of inception_v3 will be changed in future releases of torchvision. If you wish to keep the old behavior (which leads to long initialization times due to scipy/scipy#11299), please set init_weights=True.
+  warnings.warn(
+[FID] Computing REAL stats (all) ...
+[FID] REAL(all) stats ready: n=10000
+
+===== Evaluating: ckpt_step002000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step002000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step002000/samples/grid_ckpt_step002000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step002000/fid/gen_tmp
+[FID] ckpt_step002000 | overall FID = 3.0502 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step002000/fid/gen_tmp
+
+===== Evaluating: ckpt_step004000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step004000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step004000/samples/grid_ckpt_step004000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step004000/fid/gen_tmp
+[FID] ckpt_step004000 | overall FID = 3.8848 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step004000/fid/gen_tmp
+
+===== Evaluating: ckpt_step006000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step006000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step006000/samples/grid_ckpt_step006000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step006000/fid/gen_tmp
+[FID] ckpt_step006000 | overall FID = 3.0020 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step006000/fid/gen_tmp
+
+===== Evaluating: ckpt_step008000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step008000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step008000/samples/grid_ckpt_step008000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step008000/fid/gen_tmp
+[FID] ckpt_step008000 | overall FID = 3.3008 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step008000/fid/gen_tmp
+
+===== Evaluating: ckpt_step010000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step010000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step010000/samples/grid_ckpt_step010000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step010000/fid/gen_tmp
+[FID] ckpt_step010000 | overall FID = 3.6591 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step010000/fid/gen_tmp
+
+===== Evaluating: ckpt_step012000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step012000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step012000/samples/grid_ckpt_step012000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step012000/fid/gen_tmp
+[FID] ckpt_step012000 | overall FID = 4.2539 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step012000/fid/gen_tmp
+
+===== Evaluating: ckpt_step014000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step014000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step014000/samples/grid_ckpt_step014000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step014000/fid/gen_tmp
+[FID] ckpt_step014000 | overall FID = 4.3816 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step014000/fid/gen_tmp
+
+===== Evaluating: ckpt_step016000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step016000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step016000/samples/grid_ckpt_step016000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step016000/fid/gen_tmp
+[FID] ckpt_step016000 | overall FID = 3.4834 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step016000/fid/gen_tmp
+
+===== Evaluating: ckpt_step018000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step018000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step018000/samples/grid_ckpt_step018000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step018000/fid/gen_tmp
+[FID] ckpt_step018000 | overall FID = 3.7997 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step018000/fid/gen_tmp
+
+===== Evaluating: ckpt_step020000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step020000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step020000/samples/grid_ckpt_step020000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step020000/fid/gen_tmp
+[FID] ckpt_step020000 | overall FID = 5.6336 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step020000/fid/gen_tmp
+
+===== Evaluating: ckpt_step022000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step022000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step022000/samples/grid_ckpt_step022000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step022000/fid/gen_tmp
+[FID] ckpt_step022000 | overall FID = 4.5498 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step022000/fid/gen_tmp
+
+===== Evaluating: ckpt_step024000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step024000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step024000/samples/grid_ckpt_step024000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step024000/fid/gen_tmp
+[FID] ckpt_step024000 | overall FID = 5.3394 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step024000/fid/gen_tmp
+
+===== Evaluating: ckpt_step026000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step026000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step026000/samples/grid_ckpt_step026000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step026000/fid/gen_tmp
+[FID] ckpt_step026000 | overall FID = 5.1419 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step026000/fid/gen_tmp
+
+===== Evaluating: ckpt_step028000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step028000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step028000/samples/grid_ckpt_step028000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step028000/fid/gen_tmp
+[FID] ckpt_step028000 | overall FID = 5.7714 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step028000/fid/gen_tmp
+
+===== Evaluating: ckpt_step030000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step030000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step030000/samples/grid_ckpt_step030000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step030000/fid/gen_tmp
+[FID] ckpt_step030000 | overall FID = 5.9186 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step030000/fid/gen_tmp
+
+===== Evaluating: ckpt_step032000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step032000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step032000/samples/grid_ckpt_step032000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step032000/fid/gen_tmp
+[FID] ckpt_step032000 | overall FID = 5.7054 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step032000/fid/gen_tmp
+
+===== Evaluating: ckpt_step034000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step034000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step034000/samples/grid_ckpt_step034000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step034000/fid/gen_tmp
+[FID] ckpt_step034000 | overall FID = 5.9973 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step034000/fid/gen_tmp
+
+===== Evaluating: ckpt_step036000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step036000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step036000/samples/grid_ckpt_step036000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step036000/fid/gen_tmp
+[FID] ckpt_step036000 | overall FID = 5.2146 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step036000/fid/gen_tmp
+
+===== Evaluating: ckpt_step038000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step038000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step038000/samples/grid_ckpt_step038000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step038000/fid/gen_tmp
+[FID] ckpt_step038000 | overall FID = 5.2993 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step038000/fid/gen_tmp
+
+===== Evaluating: ckpt_step040000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step040000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step040000/samples/grid_ckpt_step040000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step040000/fid/gen_tmp
+[FID] ckpt_step040000 | overall FID = 5.2829 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step040000/fid/gen_tmp
+
+===== Evaluating: ckpt_step042000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step042000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step042000/samples/grid_ckpt_step042000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step042000/fid/gen_tmp
+[FID] ckpt_step042000 | overall FID = 5.6749 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step042000/fid/gen_tmp
+
+===== Evaluating: ckpt_step044000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step044000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step044000/samples/grid_ckpt_step044000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step044000/fid/gen_tmp
+[FID] ckpt_step044000 | overall FID = 5.0953 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step044000/fid/gen_tmp
+
+===== Evaluating: ckpt_step046000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step046000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step046000/samples/grid_ckpt_step046000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step046000/fid/gen_tmp
+[FID] ckpt_step046000 | overall FID = 4.8464 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step046000/fid/gen_tmp
+
+===== Evaluating: ckpt_step048000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step048000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step048000/samples/grid_ckpt_step048000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step048000/fid/gen_tmp
+[FID] ckpt_step048000 | overall FID = 4.8080 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step048000/fid/gen_tmp
+
+===== Evaluating: ckpt_step050000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step050000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step050000/samples/grid_ckpt_step050000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step050000/fid/gen_tmp
+[FID] ckpt_step050000 | overall FID = 6.3190 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step050000/fid/gen_tmp
+
+===== Evaluating: ckpt_step052000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step052000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step052000/samples/grid_ckpt_step052000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step052000/fid/gen_tmp
+[FID] ckpt_step052000 | overall FID = 5.9832 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step052000/fid/gen_tmp
+
+===== Evaluating: ckpt_step054000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step054000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step054000/samples/grid_ckpt_step054000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step054000/fid/gen_tmp
+[FID] ckpt_step054000 | overall FID = 5.5857 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step054000/fid/gen_tmp
+
+===== Evaluating: ckpt_step056000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step056000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step056000/samples/grid_ckpt_step056000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step056000/fid/gen_tmp
+[FID] ckpt_step056000 | overall FID = 6.2634 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step056000/fid/gen_tmp
+
+===== Evaluating: ckpt_step058000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step058000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step058000/samples/grid_ckpt_step058000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step058000/fid/gen_tmp
+[FID] ckpt_step058000 | overall FID = 6.3323 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step058000/fid/gen_tmp
+
+===== Evaluating: ckpt_step060000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step060000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step060000/samples/grid_ckpt_step060000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step060000/fid/gen_tmp
+[FID] ckpt_step060000 | overall FID = 4.9626 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step060000/fid/gen_tmp
+
+===== Evaluating: ckpt_step062000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step062000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step062000/samples/grid_ckpt_step062000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step062000/fid/gen_tmp
+[FID] ckpt_step062000 | overall FID = 5.6658 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step062000/fid/gen_tmp
+
+===== Evaluating: ckpt_step064000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step064000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step064000/samples/grid_ckpt_step064000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step064000/fid/gen_tmp
+[FID] ckpt_step064000 | overall FID = 5.7910 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step064000/fid/gen_tmp
+
+===== Evaluating: ckpt_step066000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step066000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step066000/samples/grid_ckpt_step066000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step066000/fid/gen_tmp
+[FID] ckpt_step066000 | overall FID = 6.1853 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step066000/fid/gen_tmp
+
+===== Evaluating: ckpt_step068000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step068000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step068000/samples/grid_ckpt_step068000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step068000/fid/gen_tmp
+[FID] ckpt_step068000 | overall FID = 6.5635 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/all_finetuning_n10/ckpt_step068000/fid/gen_tmp
+
+===== Evaluating: ckpt_step070000 =====
+[Load] Full UNet: out_1229_rkd/rkd_clip_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step070000
+[Sample] Saved grid -> eval_fid_out/all_finetuning_n10/ckpt_step070000/samples/grid_ckpt_step070000.png
+[FID] Generating 10000 images -> eval_fid_out/all_finetuning_n10/ckpt_step070000/fid/gen_tmp

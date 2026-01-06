@@ -1,0 +1,156 @@
+[Info] Device=cuda:3 | mixed_precision=fp16
+[Info] Models to evaluate: 58
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step005000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step010000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step015000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step020000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step025000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step030000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step035000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step040000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step045000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step050000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step055000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step060000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step065000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step070000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step075000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step080000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step085000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step090000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step095000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step100000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step105000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step110000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step115000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step120000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step125000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step130000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step135000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step140000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step145000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step150000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step155000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step160000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step165000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step170000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step175000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step180000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step185000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step190000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step195000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step200000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step205000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step210000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step215000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step220000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step225000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step230000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step235000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step240000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step245000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step250000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step255000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step260000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step265000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step270000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step275000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step280000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step285000
+  - /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/last
+[FID] Flattening real set (10000 imgs) -> eval_fid_out/ddpm_n10/fid_real_cache/all
+[FID] Real cache ready: all=10000 @ eval_fid_out/ddpm_n10/fid_real_cache/all
+[FID] Loading custom InceptionV3 from: 0102-imagenet-gray3/output_adamw_bs256/ckpts/best.pt
+/opt/conda/lib/python3.11/site-packages/torchvision/models/inception.py:43: FutureWarning: The default weight initialization of inception_v3 will be changed in future releases of torchvision. If you wish to keep the old behavior (which leads to long initialization times due to scipy/scipy#11299), please set init_weights=True.
+  warnings.warn(
+[FID] Computing REAL stats (all) ...
+[FID] REAL(all) stats ready: n=10000
+
+===== Evaluating: ckpt_step005000 =====
+[Load] Full UNet: /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step005000
+[Sample] Saved grid -> eval_fid_out/ddpm_n10/ckpt_step005000/samples/grid_ckpt_step005000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_n10/ckpt_step005000/fid/gen_tmp
+[FID] ckpt_step005000 | overall FID = 4.3657 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_n10/ckpt_step005000/fid/gen_tmp
+
+===== Evaluating: ckpt_step010000 =====
+[Load] Full UNet: /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step010000
+[Sample] Saved grid -> eval_fid_out/ddpm_n10/ckpt_step010000/samples/grid_ckpt_step010000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_n10/ckpt_step010000/fid/gen_tmp
+[FID] ckpt_step010000 | overall FID = 6.4299 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_n10/ckpt_step010000/fid/gen_tmp
+
+===== Evaluating: ckpt_step015000 =====
+[Load] Full UNet: /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step015000
+[Sample] Saved grid -> eval_fid_out/ddpm_n10/ckpt_step015000/samples/grid_ckpt_step015000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_n10/ckpt_step015000/fid/gen_tmp
+[FID] ckpt_step015000 | overall FID = 7.9454 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_n10/ckpt_step015000/fid/gen_tmp
+
+===== Evaluating: ckpt_step020000 =====
+[Load] Full UNet: /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step020000
+[Sample] Saved grid -> eval_fid_out/ddpm_n10/ckpt_step020000/samples/grid_ckpt_step020000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_n10/ckpt_step020000/fid/gen_tmp
+[FID] ckpt_step020000 | overall FID = 7.7140 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_n10/ckpt_step020000/fid/gen_tmp
+
+===== Evaluating: ckpt_step025000 =====
+[Load] Full UNet: /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step025000
+[Sample] Saved grid -> eval_fid_out/ddpm_n10/ckpt_step025000/samples/grid_ckpt_step025000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_n10/ckpt_step025000/fid/gen_tmp
+[FID] ckpt_step025000 | overall FID = 7.5842 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_n10/ckpt_step025000/fid/gen_tmp
+
+===== Evaluating: ckpt_step030000 =====
+[Load] Full UNet: /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step030000
+[Sample] Saved grid -> eval_fid_out/ddpm_n10/ckpt_step030000/samples/grid_ckpt_step030000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_n10/ckpt_step030000/fid/gen_tmp
+[FID] ckpt_step030000 | overall FID = 7.0532 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_n10/ckpt_step030000/fid/gen_tmp
+
+===== Evaluating: ckpt_step035000 =====
+[Load] Full UNet: /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step035000
+[Sample] Saved grid -> eval_fid_out/ddpm_n10/ckpt_step035000/samples/grid_ckpt_step035000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_n10/ckpt_step035000/fid/gen_tmp
+[FID] ckpt_step035000 | overall FID = 7.6770 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_n10/ckpt_step035000/fid/gen_tmp
+
+===== Evaluating: ckpt_step040000 =====
+[Load] Full UNet: /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step040000
+[Sample] Saved grid -> eval_fid_out/ddpm_n10/ckpt_step040000/samples/grid_ckpt_step040000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_n10/ckpt_step040000/fid/gen_tmp
+[FID] ckpt_step040000 | overall FID = 7.4790 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_n10/ckpt_step040000/fid/gen_tmp
+
+===== Evaluating: ckpt_step045000 =====
+[Load] Full UNet: /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step045000
+[Sample] Saved grid -> eval_fid_out/ddpm_n10/ckpt_step045000/samples/grid_ckpt_step045000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_n10/ckpt_step045000/fid/gen_tmp
+[FID] ckpt_step045000 | overall FID = 8.1351 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_n10/ckpt_step045000/fid/gen_tmp
+
+===== Evaluating: ckpt_step050000 =====
+[Load] Full UNet: /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step050000
+[Sample] Saved grid -> eval_fid_out/ddpm_n10/ckpt_step050000/samples/grid_ckpt_step050000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_n10/ckpt_step050000/fid/gen_tmp
+[FID] ckpt_step050000 | overall FID = 7.2093 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_n10/ckpt_step050000/fid/gen_tmp
+
+===== Evaluating: ckpt_step055000 =====
+[Load] Full UNet: /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step055000
+[Sample] Saved grid -> eval_fid_out/ddpm_n10/ckpt_step055000/samples/grid_ckpt_step055000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_n10/ckpt_step055000/fid/gen_tmp
+[FID] ckpt_step055000 | overall FID = 7.1861 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_n10/ckpt_step055000/fid/gen_tmp
+
+===== Evaluating: ckpt_step060000 =====
+[Load] Full UNet: /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step060000
+[Sample] Saved grid -> eval_fid_out/ddpm_n10/ckpt_step060000/samples/grid_ckpt_step060000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_n10/ckpt_step060000/fid/gen_tmp
+[FID] ckpt_step060000 | overall FID = 6.7408 (real=10000, gen=10000)
+[FID] Deleted gen_tmp -> eval_fid_out/ddpm_n10/ckpt_step060000/fid/gen_tmp
+
+===== Evaluating: ckpt_step065000 =====
+[Load] Full UNet: /workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10/ckpt_step065000
+[Sample] Saved grid -> eval_fid_out/ddpm_n10/ckpt_step065000/samples/grid_ckpt_step065000.png
+[FID] Generating 10000 images -> eval_fid_out/ddpm_n10/ckpt_step065000/fid/gen_tmp

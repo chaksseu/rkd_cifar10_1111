@@ -639,21 +639,27 @@ def sanitize_tag(s: str) -> str:
 def main():
     p = argparse.ArgumentParser("Generate samples + compute custom-Inception FID (overall + per-class)")
 
-    # Models
-    p.add_argument("--model_dirs", type=str, nargs="*", default=["ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000"])
-    p.add_argument("--model_root", type=str, default="")
+    # ModelsQ
+    p.add_argument("--model_dirs", type=str, nargs="*", default=[])
+    # p.add_argument("--model_root", type=str, default="/workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10")
+    # p.add_argument("--model_root", type=str, default="/workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10_no_airplane_automobile_bird_deer_dog")
+    p.add_argument("--model_root", type=str, default="/workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10")
+    # p.add_argument("--model_root", type=str, default="/workspace/1229_ddpm/ddpm_cifar10_gray3_T400_DDIM50_B32_LR1e-05_teacher_init_n10_no_airplane_automobile_bird_deer_dog")
+
+    p.add_argument("--device", type=str, default="cuda:2")
+    p.add_argument("--output_dir", type=str, default="eval_fid_out/ddpm_n10")
+
+    p.add_argument("--run_name", type=str, default="lora_finetuning_n10")
     p.add_argument("--base_model_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000", help="Required for LoRA adapters: base UNet directory.")
     p.add_argument("--lora_merge", action="store_true")
 
     # Data / output
     p.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test")
-    p.add_argument("--output_dir", type=str, default="eval_fid_out/teacher")
     p.add_argument("--fid_cache_dir", type=str, default="")
     p.add_argument("--fid_symlink_real", action="store_true")
     p.add_argument("--fid_copy_real", action="store_true")
 
     # Device / precision
-    p.add_argument("--device", type=str, default="cuda:3")
     p.add_argument("--mixed_precision", type=str, default="fp16", choices=["no", "fp16", "bf16"])
 
     # Sampling
@@ -671,11 +677,11 @@ def main():
     # FID
     p.add_argument("--disable_fid", action="store_true")
     p.add_argument("--fid_per_class", action="store_true")
-    p.set_defaults(fid_per_class=True)
+    p.set_defaults(fid_per_class=False)
     p.add_argument("--fid_num_samples", type=int, default=0, help="0 => use ALL real images; else generate this many samples.")
     p.add_argument("--fid_gen_batch", type=int, default=2048)
-    p.add_argument("--fid_batch_size", type=int, default=1024)
-    p.add_argument("--fid_num_workers", type=int, default=8)
+    p.add_argument("--fid_batch_size", type=int, default=256)
+    p.add_argument("--fid_num_workers", type=int, default=4)
     p.add_argument("--fid_keep_gen", action="store_true")
 
     # Custom Inception for FID
@@ -686,10 +692,9 @@ def main():
     p.add_argument("--inception_std", type=float, nargs=3, default=[0.2623006911570552] * 3)
 
     # W&B
-    p.add_argument("--wandb", action="store_false")
+    p.add_argument("--wandb", action="store_true")
     p.add_argument("--wandb_offline", action="store_true")
     p.add_argument("--project", type=str, default="cifar10-gray3-customfid")
-    p.add_argument("--run_name", type=str, default="eval")
 
     args = p.parse_args()
 
