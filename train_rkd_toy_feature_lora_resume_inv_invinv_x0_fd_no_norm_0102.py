@@ -1048,9 +1048,9 @@ LR=1e-5
 DATE="0105"
 
 RKD_W = 1.0
-INV_W = 1.0
-INVINV_W = 1.0
-FD_W = 1.0
+INV_W = 0.0
+INVINV_W = 0.0
+FD_W = 0.01
 SAME_W = 1.0
 
 def build_argparser():
