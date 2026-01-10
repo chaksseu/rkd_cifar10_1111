@@ -252,6 +252,21 @@ def flatten_real_cache(test_dir: Path, cache_dir: Path, use_symlink: bool = True
 
 # ------------------------- Gaussian FID (Feature or Pixel) -------------------------
 
+def frechet_distance_diag(X: torch.Tensor, Y: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+    """
+    Diagonal-cov Fréchet distance (safe for large D).
+    X, Y: (B, D)
+    """
+    X = X.float()
+    Y = Y.float()
+    mu_x = X.mean(dim=0)
+    mu_y = Y.mean(dim=0)
+    vx = X.var(dim=0, unbiased=False) + eps
+    vy = Y.var(dim=0, unbiased=False) + eps
+    mean_term = (mu_x - mu_y).pow(2).sum()
+    trace_term = (vx + vy - 2.0 * torch.sqrt(vx * vy)).sum()
+    return (mean_term + trace_term).clamp_min(0.0)
+
 def _mean_and_cov(X: torch.Tensor, eps: float = 1e-6):
     X = X.to(torch.float64)
     N, D = X.shape
@@ -540,8 +555,8 @@ def compute_losses(
         T_f = get_feats(T_last_img).float()
         I_f = get_feats(x0_inv_T).float()
         
-        fid_s = fid_gaussian_torch(S_f, R_f, eps=args.fid_eps)
-        fid_t = fid_gaussian_torch(T_f, I_f, eps=args.fid_eps)
+        fid_s = frechet_distance_diag(S_f, R_f, eps=args.fid_eps)
+        fid_t = frechet_distance_diag(T_f, I_f, eps=args.fid_eps)
         loss_fid = fid_s + fid_t
 
     # ---- SAME (Trajectory Regularization) ----
@@ -1047,11 +1062,11 @@ CUDA_NUM = 4
 LR=1e-5
 DATE="0105"
 
-RKD_W = 0.1
-INV_W = 0.1
-INVINV_W = 0.1
-FD_W = 0.1
-SAME_W = 0.1
+RKD_W = 1.0
+INV_W = 1.0
+INVINV_W = 1.0
+FD_W = 0.01
+SAME_W = 1.0
 
 def build_argparser():
     p = argparse.ArgumentParser("Student x0 distillation with Feature-based losses")
@@ -1062,7 +1077,7 @@ def build_argparser():
     p.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test")
     p.add_argument("--teacher_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
     p.add_argument("--student_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
-    p.add_argument("--output_dir", type=str, default=f"out_{DATE}_rkd/rkd_{RKD_METRIC}_lora_feature_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}_LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
+    p.add_argument("--output_dir", type=str, default=f"out_{DATE}_rkd/rkd_{RKD_METRIC}_lora_feature_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}_LR{LR}-EASY_FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
 
     # Metric Selection for RKD/INV
     p.add_argument(
@@ -1089,7 +1104,7 @@ def build_argparser():
 
     p.add_argument("--device", type=str, default=f"cuda:{CUDA_NUM}")
     p.add_argument("--project", type=str, default=f"rkd-feature-cifar10-rgb-to-gray-{DATE}")
-    p.add_argument("--run_name", type=str, default=f"student-lora-{RKD_METRIC}-x0-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
+    p.add_argument("--run_name", type=str, default=f"student-lora-{RKD_METRIC}-x0-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps-EASY-FD")
     p.add_argument("--wandb_offline", action="store_true")
     p.add_argument("--mixed_precision", type=str, default="fp16", choices=["no", "fp16", "bf16"])
 
