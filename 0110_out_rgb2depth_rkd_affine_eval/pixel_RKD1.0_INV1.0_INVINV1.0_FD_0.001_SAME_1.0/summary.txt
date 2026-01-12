@@ -1,0 +1,17 @@
+[EVAL-VIS] step=00000002 saved=/workspace/rkd_cifar10_1111/0110_out_rgb2depth_rkd_affine_eval/pixel_RKD1.0_INV1.0_INVINV1.0_FD_0.001_SAME_1.0/eval_vis/rgb_predm_preda_gt_step00000002.png
+[EVAL] step=00000002 (image-mean) AbsRel=381.403563 d1=0.262989 d2=0.478865 d3=0.623073 | (pixel-mean) AbsRel=384.009602 d1=0.262487 d2=0.478143 d3=0.622322 (affine_align=1, steps=50, eta=0.0, batches_limit=0)
+[EVAL-VIS] step=00000004 saved=/workspace/rkd_cifar10_1111/0110_out_rgb2depth_rkd_affine_eval/pixel_RKD1.0_INV1.0_INVINV1.0_FD_0.001_SAME_1.0/eval_vis/rgb_predm_preda_gt_step00000004.png
+[EVAL] step=00000004 (image-mean) AbsRel=381.406887 d1=0.262988 d2=0.478864 d3=0.623073 | (pixel-mean) AbsRel=384.012969 d1=0.262486 d2=0.478142 d3=0.622322 (affine_align=1, steps=50, eta=0.0, batches_limit=0)
+[EVAL-VIS] step=00000006 saved=/workspace/rkd_cifar10_1111/0110_out_rgb2depth_rkd_affine_eval/pixel_RKD1.0_INV1.0_INVINV1.0_FD_0.001_SAME_1.0/eval_vis/rgb_predm_preda_gt_step00000006.png
+[EVAL] step=00000006 (image-mean) AbsRel=381.408986 d1=0.262986 d2=0.478864 d3=0.623074 | (pixel-mean) AbsRel=384.015091 d1=0.262484 d2=0.478142 d3=0.622323 (affine_align=1, steps=50, eta=0.0, batches_limit=0)
+[EVAL-VIS] step=00000008 saved=/workspace/rkd_cifar10_1111/0110_out_rgb2depth_rkd_affine_eval/pixel_RKD1.0_INV1.0_INVINV1.0_FD_0.001_SAME_1.0/eval_vis/rgb_predm_preda_gt_step00000008.png
+[EVAL] step=00000008 (image-mean) AbsRel=381.409905 d1=0.262986 d2=0.478864 d3=0.623073 | (pixel-mean) AbsRel=384.016015 d1=0.262484 d2=0.478142 d3=0.622322 (affine_align=1, steps=50, eta=0.0, batches_limit=0)
+[Epoch 001] step=00000010 total=1.860905 rkd=0.019923 inv=0.072210 invinv=0.065697 fd=1699.418823 same=0.003655
+[EVAL-VIS] step=00000010 saved=/workspace/rkd_cifar10_1111/0110_out_rgb2depth_rkd_affine_eval/pixel_RKD1.0_INV1.0_INVINV1.0_FD_0.001_SAME_1.0/eval_vis/rgb_predm_preda_gt_step00000010.png
+[EVAL] step=00000010 (image-mean) AbsRel=381.412458 d1=0.262986 d2=0.478864 d3=0.623073 | (pixel-mean) AbsRel=384.018602 d1=0.262485 d2=0.478143 d3=0.622322 (affine_align=1, steps=50, eta=0.0, batches_limit=0)
+[EVAL-VIS] step=00000012 saved=/workspace/rkd_cifar10_1111/0110_out_rgb2depth_rkd_affine_eval/pixel_RKD1.0_INV1.0_INVINV1.0_FD_0.001_SAME_1.0/eval_vis/rgb_predm_preda_gt_step00000012.png
+[EVAL-VIS] step=00000002 saved=/workspace/rkd_cifar10_1111/0110_out_rgb2depth_rkd_affine_eval/pixel_RKD1.0_INV1.0_INVINV1.0_FD_0.001_SAME_1.0/eval_vis/rgb_predm_preda_gt_step00000002.png
+[EVAL] step=00000002 (image-mean) AbsRel=381.403376 d1=0.262986 d2=0.478861 d3=0.623074 | (pixel-mean) AbsRel=384.009414 d1=0.262484 d2=0.478140 d3=0.622323 (affine_align=1, steps=50, eta=0.0, batches_limit=0)
+[EVAL-VIS] step=00000004 saved=/workspace/rkd_cifar10_1111/0110_out_rgb2depth_rkd_affine_eval/pixel_RKD1.0_INV1.0_INVINV1.0_FD_0.001_SAME_1.0/eval_vis/rgb_predm_preda_gt_step00000004.png
+[EVAL] step=00000004 (image-mean) AbsRel=381.406664 d1=0.262987 d2=0.478862 d3=0.623074 | (pixel-mean) AbsRel=384.012743 d1=0.262486 d2=0.478141 d3=0.622323 (affine_align=1, steps=50, eta=0.0, batches_limit=0)
+[EVAL-VIS] step=00000006 saved=/workspace/rkd_cifar10_1111/0110_out_rgb2depth_rkd_affine_eval/pixel_RKD1.0_INV1.0_INVINV1.0_FD_0.001_SAME_1.0/eval_vis/rgb_predm_preda_gt_step00000006.png

@@ -1,0 +1,17 @@
+[Config]
+model_id=depth-anything/Depth-Anything-V2-Small-hf
+rgb_root=/workspace/rkd_cifar10_1111/cifar10_png_linear_only/rgb/test
+gt_depth_root=/workspace/rkd_cifar10_1111/cifar10_png_linear_only/depth/test
+image_size=32
+batch_size=256
+affine_align=1
+min_depth_eval=0.001
+depth_eps=1e-06
+delta=1.25
+use_depth_raw_npy=1
+use_depth_npy=1
+save_vis=1
+
+[VIS] saved=/workspace/rkd_cifar10_1111/0111_eval_depthanything_v2_small_test/vis/rgb_pred_preda_gt.png
+
+[RESULT] (image-mean) AbsRel=0.542013 d1=0.721755 d2=0.836747 d3=0.886616 | (pixel-mean) AbsRel=0.546080 d1=0.719334 d2=0.835133 d3=0.885489 | affine_align=1 min_depth_eval=0.001 S=32
