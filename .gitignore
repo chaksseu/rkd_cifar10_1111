@@ -28,6 +28,7 @@ __pycache__/
 .DS_Store
 .env
 nohup.out
+Dataset_*
 
 # 유지
 !cifar10_student_data_n100/

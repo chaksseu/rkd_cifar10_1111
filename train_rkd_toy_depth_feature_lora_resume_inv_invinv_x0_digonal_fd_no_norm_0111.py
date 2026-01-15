@@ -189,7 +189,8 @@ def set_seed(seed: int):
     random.seed(seed)
     os.environ["PYTHONHASHSEED"] = str(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    torch.cuda.manual_seed(seed)
+    # torch.cuda.manual_seed_all(seed)
 
 def resolve_device(device_str: str) -> torch.device:
     try:
@@ -507,7 +508,7 @@ def invert_x0_to_zT_ddim_inverse_epspred(
     inv = DDIMInverseScheduler.from_config(ddim.config)
     inv.set_timesteps(int(steps), device=device)
 
-    model.eval()
+    # model.eval()
     xt = x0.to(device)
     for t in inv.timesteps:
         x_in = inv.scale_model_input(xt, t)
@@ -1538,10 +1539,10 @@ def train(args):
 def build_argparser():
     p = argparse.ArgumentParser("RKD training on depth + paired RGB->Depth eval (affine-invariant)")
 
-    DATE = "0111"
-    CUDA_NUM = 5
+    DATE = "0114"
+    CUDA_NUM = 0
     BATCH_SIZE = 8
-    RKD_METRIC = "pixel"  # choices=["pixel", "inception", "clip", "dinov3"]
+    RKD_METRIC = "dinov3"  # choices=["pixel", "inception", "clip", "dinov3"]
     RKD_W = 1.0
     INV_W= 1.0
     INVINV_W = 1.0
@@ -1553,7 +1554,11 @@ def build_argparser():
     DEFAULT_TEACHER_DIR = "/workspace/rkd_cifar10_1111/ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000"
 
     # paths
+    # p.add_argument("--resume_checkpoint", type=str, default="0111_out_rgb2depth_rkd_affine_eval/pixel_RKD1.0_INV1.0_INVINV1.0_FD_0.01_SAME_1.0/last")
+    # p.add_argument("--resume_checkpoint", type=str, default="0111_out_rgb2depth_rkd_affine_eval/pixel_RKD1.0_INV1.0_INVINV1.0_FD_0.01_SAME_1.0/ckpts/ckpt_step002000")
     p.add_argument("--resume_checkpoint", type=str, default="")
+
+    
     p.add_argument("--student_data_dir", type=str, default=f"{DEFAULT_DEPTH_ROOT}/train")
     p.add_argument("--teacher_dir", type=str, default=DEFAULT_TEACHER_DIR)
     p.add_argument(

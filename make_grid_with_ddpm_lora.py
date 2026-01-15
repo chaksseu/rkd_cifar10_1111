@@ -21,14 +21,11 @@ DEFAULT_BASE_MODEL = "ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000"
 # 2. 평가할 모델 리스트 (일반 UNet 폴더와 LoRA 폴더를 섞어서 넣어도 됩니다)
 
 DEFAULT_MODELS = [
-    "/workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10/lora_step155000",
-    "/workspace/1229_ddpm/ddpm_LoRA_gray_r32_a32_cifar10_rgb_T400_DDIM50-b32-lr1e-05_n10_no_airplane_automobile_bird_deer_dog/lora_step155000",
-    "rkd_clip_lora_cifiar10_rgb_to_gray_1229/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps_no_airplane_automobile_bird_deer_dog/ckpts/ckpt_step058000",
-    "rkd_clip_lora_cifiar10_rgb_to_gray_1229/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW0.1-invW0.1-invinvW1.0-fdW0.0001-sameW0.1-teacher-init-eps/ckpts/ckpt_step092000",
-    "out_0105_rkd/rkd_clip_lora_feature_cifar10_rgb_to_gray_single_batch8_N10_LR1e-05-FD-rkdW1.0-invW1.0-invinvW1.0-fdW0.01-sameW1.0-teacher-init-eps/ckpts/ckpt_step014000"
+    "out_0107_rkd/x0+diff_flatten_bs8_lr1e-05-RKD0.0_1.0-INV0.0_1.0-INVINV0.0_1.0-FD0.0_1e-05-SAME0.0_0.0/last",
+    "out_0107_rkd/x0+diff_flatten_bs8_lr1e-05-RKD1.0_1.0-INV1.0_1.0-INVINV1.0_1.0-FD1e-05_1e-05-SAME0.0_0.0/last",
 ]
 DEFAULT_DEVICE = "cuda:7"
-DEFAULT_OUTPUT_DIR = "0106_comparison_grids_teacher_RKD_pixel_feature_teacher_init"
+DEFAULT_OUTPUT_DIR = "0107_comparison_grids_teacher_RKD_pixel_diffusion_feature_teacher_init_D"
 DEFAULT_IMAGE_SIZE = 32
 DEFAULT_NUM_IMAGES = 36  # 6x6 Grid
 DEFAULT_STEPS = 50

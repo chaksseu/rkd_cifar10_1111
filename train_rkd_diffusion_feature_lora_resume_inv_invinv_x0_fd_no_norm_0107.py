@@ -378,12 +378,12 @@ def teacher_rollout(
         eps = teacher(x_in, t).sample
         out = local.step(model_output=eps, timestep=t, sample=x, eta=eta)
         x = out.prev_sample
-        # preds_x0.append(out.pred_original_sample)
+        preds_x0.append(out.pred_original_sample)
 
         if feat_col is not None and (i % max(1, store_stride) == 0):
             feats.append(feat_col.flatten_and_concat())  # (B, D) already flattened
 
-    return x, (feats if feat_col is not None else None) # preds_x0, (feats if feat_col is not None else None)
+    return preds_x0, (feats if feat_col is not None else None) # preds_x0, (feats if feat_col is not None else None)
 
 def student_rollout_with_grad(
     student,
@@ -411,7 +411,7 @@ def student_rollout_with_grad(
         eps = student(x_in, t).sample
         out = local.step(model_output=eps, timestep=t, sample=x, eta=eta)
         x = out.prev_sample
-        # preds_x0.append(out.pred_original_sample)
+        preds_x0.append(out.pred_original_sample)
 
         if feat_col is not None and (i % max(1, store_stride) == 0):
             feats.append(feat_col.flatten_and_concat())  # NO detach
@@ -1148,9 +1148,20 @@ def train(args):
 # ------------------------- Args -------------------------
 
 BATCH_SIZE = 8
-CUDA_NUM = 7
+CUDA_NUM = 4
 LR = 1e-5
 DATE = "0107"
+RKD_W0 = 0.0
+INV_W0 = 0.0
+INVINV_W0 = 0.0
+FD_W0 = 0.0
+SAME_W0 = 0.0
+
+RKD_W = 1.0
+INV_W = 1.0
+INVINV_W = 1.0
+FD_W = 0.00001
+SAME_W = 0.0
 
 def build_argparser():
     p = argparse.ArgumentParser("Distill with x0 + diffusion intermediate features (flattened for losses)")
@@ -1160,11 +1171,11 @@ def build_argparser():
     p.add_argument("--student_data_dir", type=str, default="cifar10_student_data_n10/gray3/train")
     p.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test")
     p.add_argument("--teacher_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
-    p.add_argument("--output_dir", type=str, default=f"out_{DATE}_rkd/x0+diff_flatten_bs{BATCH_SIZE}_lr{LR}-original-fd")
+    p.add_argument("--output_dir", type=str, default=f"out_{DATE}_rkd/x0+diff_flatten_bs{BATCH_SIZE}_lr{LR}-RKD{RKD_W0}_{RKD_W}-INV{INV_W0}_{INV_W}-INVINV{INVINV_W0}_{INVINV_W}-FD{FD_W0}_{FD_W}-SAME{SAME_W0}_{SAME_W}")
 
     p.add_argument("--device", type=str, default=f"cuda:{CUDA_NUM}")
     p.add_argument("--project", type=str, default=f"x0-diff-flatten-rkd-{DATE}")
-    p.add_argument("--run_name", type=str, default=f"student-lora-x0-diffflatten-{DATE}-bs{BATCH_SIZE}-lr{LR}-original-fd")
+    p.add_argument("--run_name", type=str, default=f"student-lora-x0-diffflatten-bs{BATCH_SIZE}-lr{LR}-RKD{RKD_W0}_{RKD_W}-INV{INV_W0}_{INV_W}-INVINV{INVINV_W0}_{INVINV_W}-FD{FD_W0}_{FD_W}-SAME{SAME_W0}_{SAME_W}")
     p.add_argument("--wandb_offline", action="store_true")
     p.add_argument("--mixed_precision", type=str, default="fp16", choices=["no", "fp16", "bf16"])
 
@@ -1199,28 +1210,28 @@ def build_argparser():
                    help="Store diffusion features every N-th timestep (append stride).")
 
     # RKD
-    p.add_argument("--w_rkd_x0", type=float, default=0.0)
-    p.add_argument("--w_rkd_diff", type=float, default=1.0)
+    p.add_argument("--w_rkd_x0", type=float, default=RKD_W0)
+    p.add_argument("--w_rkd_diff", type=float, default=RKD_W)
     p.add_argument("--rkd_x0_stride", type=int, default=1)
     p.add_argument("--rkd_diff_stride", type=int, default=1)
     p.add_argument("--rkd_x0_teacher_ref", type=str, default="last", choices=["last", "matched"])
     p.add_argument("--rkd_diff_teacher_ref", type=str, default="matched", choices=["last", "matched"])
 
     # INV / INVINV / FD weights (x0 vs diff)
-    p.add_argument("--w_inv_x0", type=float, default=0.0)
-    p.add_argument("--w_inv_diff", type=float, default=1.0)
-    p.add_argument("--w_invinv_x0", type=float, default=0.0)
-    p.add_argument("--w_invinv_diff", type=float, default=1.0)
-    p.add_argument("--w_fd_x0", type=float, default=0.0)
-    p.add_argument("--w_fd_diff", type=float, default=0.0000001)
+    p.add_argument("--w_inv_x0", type=float, default=INV_W0)
+    p.add_argument("--w_inv_diff", type=float, default=INV_W)
+    p.add_argument("--w_invinv_x0", type=float, default=INVINV_W0)
+    p.add_argument("--w_invinv_diff", type=float, default=INVINV_W)
+    p.add_argument("--w_fd_x0", type=float, default=FD_W0)
+    p.add_argument("--w_fd_diff", type=float, default=FD_W)
     p.add_argument("--fd_eps", type=float, default=1e-8)
 
     # SAME
-    p.add_argument("--w_same", type=float, default=0.0)
+    p.add_argument("--w_same", type=float, default=SAME_W)
     p.add_argument("--same_mode", type=str, default="mean", choices=["mean", "last"])
 
     # logging / eval
-    p.add_argument("--log_interval", type=int, default=100)
+    p.add_argument("--log_interval", type=int, default=10)
     p.add_argument("--save_interval", type=int, default=1000)
     p.add_argument("--sample_interval", type=int, default=1000)
     p.add_argument("--sample_n", type=int, default=64)
