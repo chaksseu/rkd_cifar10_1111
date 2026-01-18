@@ -2,12 +2,11 @@
 # -*- coding: utf-8 -*-
 
 """
-Student (x0 predictor) distillation with Feature-based losses (Pixel, Inception, CLIP):
+Student (x0 predictor) distillation with Feature-based losses (Pixel, CLIP, DINO):
   - RKD (pdist) in Feature space (Pixel or Perceptual)
   - INV (cdist) in Feature space
   - INVINV (pdist) in Feature space
   - FID loss (Gaussian) in Feature space (if perceptual metric is chosen, compute Gaussian on features)
-  - SAME loss (trajectory shrink regularizer)
 
 Dependencies:
   - pip install diffusers transformers torch torchvision pytorch-fid peft
@@ -21,6 +20,7 @@ from pathlib import Path
 from typing import List, Optional
 from contextlib import nullcontext
 
+import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -37,6 +37,12 @@ from peft import LoraConfig, get_peft_model, PeftModel  # PeftModel 추가됨
 # HuggingFace
 from transformers import AutoModel, AutoImageProcessor, CLIPModel
 
+
+from collections import OrderedDict
+from safetensors.torch import load_file as safe_load_file
+from safetensors import safe_open
+
+
 # ------------------------- Feature Extraction Utils -------------------------
 
 class FeatureEmbedder(nn.Module):
@@ -44,7 +50,6 @@ class FeatureEmbedder(nn.Module):
     Extracts features from images for RKD/Distance computations.
     Modes:
       - 'pixel'    : Flatten raw pixels
-      - 'inception': InceptionV3 features (2048 dim), resize 299
       - 'clip'     : CLIP vision embeddings, resize 224
       - 'dinov3'   : DINOv3 embeddings (HF AutoModel), resize based on image processor (typically 224)
     """
@@ -62,20 +67,6 @@ class FeatureEmbedder(nn.Module):
 
         if mode == "pixel":
             self.net = None
-            return
-
-        if mode == "inception":
-            print("[Embedder] Loading InceptionV3...", flush=True)
-            weights = models.Inception_V3_Weights.DEFAULT
-            self.net = models.inception_v3(weights=weights).to(device)
-            self.net.fc = nn.Identity()
-            self.net.dropout = nn.Identity()
-            for p in self.net.parameters():
-                p.requires_grad = False
-            self.net.eval()
-            self.mean = torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1)
-            self.std  = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
-            self.target_size = (299, 299)
             return
 
         if mode == "clip":
@@ -135,7 +126,7 @@ class FeatureEmbedder(nn.Module):
 
             return
 
-        raise ValueError(f"Unknown metric mode: {mode}. Use one of ['pixel','inception','clip','dinov3'].")
+        raise ValueError(f"Unknown metric mode: {mode}. Use one of ['pixel','clip','dinov3'].")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -145,16 +136,17 @@ class FeatureEmbedder(nn.Module):
         if self.mode == "pixel":
             return x.reshape(x.shape[0], -1)
 
+        # # [-1,1] -> [0,1]
+        # x_01 = (x + 1) * 0.5
+
+        # bank 생성과 동일하게 clamp (pixel은 굳이 필요 없지만 해도 무방)
+        x = x.clamp(-1, 1)
         # [-1,1] -> [0,1]
         x_01 = (x + 1) * 0.5
 
         # resize + normalize
         x_up = F.interpolate(x_01, size=self.target_size, mode="bilinear", align_corners=False, antialias=True)
         x_norm = (x_up - self.mean) / self.std
-
-        if self.mode == "inception":
-            # torchvision inception forward expects tensor input directly
-            return self.net(x_norm)
 
         if self.mode == "clip":
             outputs = self.net(pixel_values=x_norm)
@@ -200,6 +192,10 @@ def pdist_vec(x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 def cdist_vec(x: torch.Tensor, y: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     return torch.cdist(x, y, p=2).reshape(-1).clamp_min(eps)
 
+def l2norm_feat(f: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
+    # f: (N, D)
+    return f / f.norm(dim=1, keepdim=True).clamp_min(eps)
+
 def set_seed(seed: int):
     import random
     random.seed(seed)
@@ -227,6 +223,23 @@ def resolve_device(device_str: str) -> torch.device:
     if dev.type == "cuda" and not torch.cuda.is_available():
         return torch.device("cpu")
     return dev
+
+def make_abl_suffix(args) -> str:
+    # 항상 같은 순서로 붙여야 비교가 쉬움
+    tags = []
+    if getattr(args, "rkd_no_mean_norm", False):
+        tags.append("noMean")
+    if getattr(args, "feat_l2norm", False):
+        tags.append("featL2")
+    if getattr(args, "mean_detach", False):
+        tags.append("meanDetach")
+    if getattr(args, "teacher_match_k", False):
+        tags.append("TmatchK")
+
+    # 아무 것도 없으면 base로 표기
+    if len(tags) == 0:
+        return "ABLbase"
+    return "ABL-" + "-".join(tags)
 
 def collect_image_paths_recursive(root: Path, exts={".png", ".jpg", ".jpeg"}) -> List[Path]:
     return [p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in exts]
@@ -282,28 +295,6 @@ def _mean_and_cov(X: torch.Tensor, eps: float = 1e-6):
     C = 0.5 * (C + C.t()) + eps * I
     return mu.squeeze(0), C
 
-def _sqrtm_psd(A: torch.Tensor, eps: float = 0.0) -> torch.Tensor:
-    A = 0.5 * (A + A.t())
-    evals, vecs = torch.linalg.eigh(A)
-    evals = (evals + eps).clamp_min(0)
-    return (vecs * evals.sqrt().unsqueeze(0)) @ vecs.t()
-
-def fid_gaussian_torch(X: torch.Tensor, Y: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-    assert X.dim() == 2 and Y.dim() == 2 and X.size(1) == Y.size(1)
-    out_dtype = X.dtype
-
-    mx, Cx = _mean_and_cov(X, eps)
-    my, Cy = _mean_and_cov(Y, eps)
-
-    mean_term = ((mx - my) ** 2).sum()
-
-    Cy_sqrt = _sqrtm_psd(Cy, eps=eps)
-    B = Cy_sqrt @ Cx @ Cy_sqrt
-    B_sqrt = _sqrtm_psd(B, eps=eps)
-
-    trace_term = torch.trace(Cx + Cy - 2.0 * B_sqrt)
-    return (mean_term + trace_term).clamp_min(0.0).to(out_dtype)
-
 
 # ------------------------- Dataset (student data) -------------------------
 
@@ -334,6 +325,186 @@ class StudentImageFolderDataset(Dataset):
         return x01 * 2.0 - 1.0
 
 
+# ------------------------- Offline Teacher Bank (z + teacher_feat) -------------------------
+
+class OfflineTeacherBankBatcher:
+    """
+    Safetensors bank loader (metric-wise):
+      bank_root/
+        clip/shards/shard_*.safetensors
+        dinov3/shards/shard_*.safetensors
+        pixel/shards/shard_*.safetensors
+
+    Each shard contains:
+      - "z": (N,3,H,W)
+      - feats_{metric}: (N,D)
+      - "steps": (N,) int16   (mixed inside shard)
+    We return batches where all samples share the SAME steps (scalar),
+    so downstream code can keep using one DDIM steps per batch.
+    """
+
+    METRIC2KEY = {
+        "pixel":  "feats_pixel",
+        "clip":   "feats_clip",
+        "dinov3": "feats_dinov3",
+    }
+
+    def __init__(
+        self,
+        bank_root: str,
+        metric: str,
+        seed: int = 0,
+        steps_min: int = 40,
+        steps_max: int = 60,
+        cache_shards: int = 2,
+        index_max_unique_steps: int = 256,  # safety
+    ):
+        self.root = Path(bank_root)
+        if not self.root.exists():
+            raise FileNotFoundError(f"teacher_bank_dir not found: {self.root}")
+
+        if metric not in self.METRIC2KEY:
+            raise ValueError(f"Unsupported metric='{metric}'. Use one of {list(self.METRIC2KEY.keys())}")
+
+        self.metric = metric
+        self.feat_key = self.METRIC2KEY[metric]
+
+        # metric-wise shards path
+        self.shard_dir = self.root / metric / "shards"
+        if not self.shard_dir.exists():
+            raise FileNotFoundError(
+                f"Expected safetensors bank layout: {self.root}/{metric}/shards/*.safetensors "
+                f"(not found: {self.shard_dir})"
+            )
+
+        self.shards = sorted(self.shard_dir.glob("shard_*.safetensors"))
+        if len(self.shards) == 0:
+            raise FileNotFoundError(f"No shard_*.safetensors found under: {self.shard_dir}")
+
+        self.steps_min = int(steps_min)
+        self.steps_max = int(steps_max)
+        if self.steps_min <= 0 or self.steps_max < self.steps_min:
+            raise ValueError(f"Invalid steps range: [{self.steps_min},{self.steps_max}]")
+
+        self.rng = random.Random(int(seed))
+        self.torch_rng = torch.Generator(device="cpu")
+        self.torch_rng.manual_seed(int(seed))
+
+        # LRU cache: path -> dict of tensors (CPU)
+        self.cache = OrderedDict()
+        self.cache_shards = int(cache_shards)
+        if self.cache_shards <= 0:
+            self.cache_shards = 1
+
+        # Build step -> list of shards that contain that step (cheap, reads only 'steps')
+        self.step2shards = {s: [] for s in range(self.steps_min, self.steps_max + 1)}
+        for p in self.shards:
+            try:
+                with safe_open(str(p), framework="pt", device="cpu") as f:
+                    if "steps" not in f.keys():
+                        continue
+                    steps_vec = f.get_tensor("steps")  # int16 (N,)
+            except Exception:
+                continue
+
+            # unique steps inside shard (cap for safety)
+            uniq = torch.unique(steps_vec)
+            if uniq.numel() > index_max_unique_steps:
+                # extremely unlikely; still safe
+                uniq = uniq[:index_max_unique_steps]
+
+            for s in uniq.tolist():
+                s = int(s)
+                if self.steps_min <= s <= self.steps_max:
+                    self.step2shards[s].append(p)
+
+        # Ensure at least one step is available
+        avail = [s for s, ps in self.step2shards.items() if len(ps) > 0]
+        if len(avail) == 0:
+            raise RuntimeError(
+                f"No shards contain steps in range [{self.steps_min},{self.steps_max}]. "
+                f"Check bank generation / repack."
+            )
+
+        self.available_steps = avail
+
+    def _get_shard(self, p: Path) -> dict:
+        """Load shard tensors to CPU with LRU caching."""
+        key = str(p)
+        if key in self.cache:
+            self.cache.move_to_end(key)
+            return self.cache[key]
+
+        d = safe_load_file(str(p), device="cpu")  # loads all tensors in this shard
+        # required keys check
+        if "z" not in d:
+            raise KeyError(f"Shard missing 'z': {p}")
+        if "steps" not in d:
+            raise KeyError(f"Shard missing 'steps': {p}")
+        if self.feat_key not in d:
+            raise KeyError(f"Shard missing '{self.feat_key}': {p}")
+
+        # Ensure contiguous for faster index_select
+        d["z"] = d["z"].contiguous()
+        d[self.feat_key] = d[self.feat_key].contiguous()
+        d["steps"] = d["steps"].contiguous()
+
+        self.cache[key] = d
+        self.cache.move_to_end(key)
+
+        # evict old
+        while len(self.cache) > self.cache_shards:
+            self.cache.popitem(last=False)
+
+        return d
+
+    def next(self, batch_size: int, device: torch.device, z_dtype: torch.dtype):
+        """
+        Returns:
+          z_gpu: (B,3,H,W) on GPU dtype=z_dtype
+          teacher_feat_gpu: (B,D) on GPU (original dtype from file; usually fp32)
+          steps: int (same for entire batch)
+        """
+        B = int(batch_size)
+        if B <= 0:
+            raise ValueError("batch_size must be positive")
+
+        # pick a target steps uniformly over available
+        steps = int(self.available_steps[self.rng.randrange(len(self.available_steps))])
+
+        # try a few shards that contain this steps
+        shard_list = self.step2shards.get(steps, [])
+        if len(shard_list) == 0:
+            # fallback: pick any available step again (shouldn't happen)
+            steps = int(self.available_steps[self.rng.randrange(len(self.available_steps))])
+            shard_list = self.step2shards[steps]
+
+        # Attempt multiple times until we find enough samples in that shard for this step
+        for _ in range(32):
+            p = shard_list[self.rng.randrange(len(shard_list))]
+            d = self._get_shard(p)
+
+            steps_vec = d["steps"]  # (N,)
+            idx_all = (steps_vec == steps).nonzero(as_tuple=False).squeeze(1)
+            n = int(idx_all.numel())
+            if n < B:
+                continue
+
+            # sample without replacement within idx_all
+            perm = torch.randperm(n, generator=self.torch_rng)[:B]
+            idx = idx_all.index_select(0, perm)
+
+            z_cpu = d["z"].index_select(0, idx)
+            f_cpu = d[self.feat_key].index_select(0, idx)
+
+            z_gpu = z_cpu.to(device, non_blocking=True, dtype=z_dtype)
+            f_gpu = f_cpu.to(device, non_blocking=True)  # keep fp32 by default
+            return z_gpu, f_gpu, int(steps)
+
+        raise RuntimeError(f"Failed to sample a batch for steps={steps} after many tries. Try larger shards or cache.")
+
+
+
 # ------------------------- Schedulers -------------------------
 
 def load_teacher_scheduler_or_fallback(teacher_dir: Path, train_timesteps: int, beta_schedule: str) -> DDPMScheduler:
@@ -356,41 +527,46 @@ def make_ddim(ddpm: DDPMScheduler, prediction_type: str) -> DDIMScheduler:
 # ------------------------- Sampling / Inversion -------------------------
 
 # @torch.no_grad()
-def teacher_predx0_seq(teacher, ddim_T, z, steps, eta, device) -> List[torch.Tensor]:
+def teacher_predx0_seq(teacher, ddim_T, z, steps, eta, device) -> torch.Tensor:
     local = DDIMScheduler.from_config(ddim_T.config)
     local.set_timesteps(steps, device=device)
     x = z.to(device)
 
     teacher.eval()
-    preds: List[torch.Tensor] = []
     for t in local.timesteps:
         x_in = local.scale_model_input(x, t)
         eps  = teacher(x_in, t).sample
         out  = local.step(model_output=eps, timestep=t, sample=x, eta=eta)
         x    = out.prev_sample
-        preds.append(out.pred_original_sample)
-    return preds
+    return x
 
-def student_predx0_seq_with_grad(student, ddim_S, z, steps, eta, device) -> List[torch.Tensor]:
+
+
+def student_predx0_seq_with_grad(student, ddim_S, z, steps, eta, device, rkd_step_k: int) -> torch.Tensor:
     local = DDIMScheduler.from_config(ddim_S.config)
     local.set_timesteps(steps, device=device)
     x = z.to(device)
-
     student.train()
-    preds: List[torch.Tensor] = []
+
+    k_step = 0
+
     for t in local.timesteps:
         x_in = local.scale_model_input(x, t)
         eps   = student(x_in, t).sample
         out  = local.step(model_output=eps, timestep=t, sample=x, eta=eta)
         x    = out.prev_sample
-        preds.append(out.pred_original_sample)
-    return preds
+
+        if k_step >= rkd_step_k:
+            return out.pred_original_sample
+        k_step += 1
+
+    return out.pred_original_sample
 
 
 def invert_x0_to_zT_deterministic_x0pred(student, ddim_S, x0, steps, device) -> torch.Tensor:
     inv = DDIMInverseScheduler.from_config(ddim_S.config)
     inv.set_timesteps(steps, device=device)
-    student.train()
+    # student.eval()
     xt = x0
     for t in inv.timesteps:
         # t_b = torch.full((xt.shape[0],), int(t), device=device, dtype=torch.long)
@@ -441,8 +617,8 @@ def sample_images_ddim_x0pred(
 # ------------------------- Losses -------------------------
 
 def compute_losses(
-    preds_T: List[torch.Tensor],
-    preds_S: List[torch.Tensor],
+    teacher_feat: torch.Tensor,   # (B,D) offline bank feature == T_f
+    preds_S: torch.Tensor,
     x0_real: torch.Tensor,
     x0_inv_T: torch.Tensor,
     embedder: FeatureEmbedder,
@@ -451,66 +627,57 @@ def compute_losses(
     eps = 1e-12
     device = x0_real.device
 
-    # Get Last items (raw images)
-    T_last_img = preds_T[-1]
-    S_last_img = preds_S[-1]
-    
-    # Helper to extract features or return flatten pixels
-    def get_feats(img):
-        return embedder(img)
+    # ---- feature extraction ----
+    with torch.no_grad():
+        R_f = embedder(x0_real)
 
-    # ---- RKD vectors (pdist in Feature Space) ----
-    rkd_s_list, rkd_t_list = [], []
-    
+    I_f = embedder(x0_inv_T)
+    S_f = embedder(preds_S)
+
+    target_dtype = S_f.dtype
+    T_f = teacher_feat.to(dtype=target_dtype)
+    R_f = R_f.to(dtype=target_dtype)
+    I_f = I_f.to(dtype=target_dtype)
+
+
+
+    # ---- RKD / INV / INVINV vectors ----
+    loss_rkd = torch.tensor(0.0, device=device)
+    loss_inv = torch.tensor(0.0, device=device)
+    loss_invinv = torch.tensor(0.0, device=device)
+
+    rkd_s_list = rkd_t_list = None
+    # RKD
     if args.w_rkd != 0.0:
-        if args.rkd_teacher_ref == "last":
-            # Teacher reference is always the final image features
-            feats_T_last = get_feats(T_last_img)
-            T_ref_pdist = pdist_vec(feats_T_last, eps=eps)
-            
-            for k in range(0, len(preds_S), max(1, args.rkd_stride)):
-                feats_S = get_feats(preds_S[k])
-                rkd_s_list.append(pdist_vec(feats_S, eps=eps))
-                rkd_t_list.append(T_ref_pdist)
-        else:  # matched
-            for k in range(0, len(preds_S), max(1, args.rkd_stride)):
-                feats_S = get_feats(preds_S[k])
-                feats_T = get_feats(preds_T[k])
-                rkd_s_list.append(pdist_vec(feats_S, eps=eps))
-                rkd_t_list.append(pdist_vec(feats_T, eps=eps))
+        with torch.no_grad():
+            rkd_t_list = pdist_vec(T_f, eps=eps)
+        rkd_s_list = pdist_vec(S_f, eps=eps)
 
-    # ---- INV / INVINV vectors (Feature Space) ----
-    # INV: Dist(Student_Gen, Real_Image) vs Dist(Teacher_Gen, Inverted_Image)
+    # INV
     inv_s = inv_t = None
     if args.w_inv != 0.0:
-        f_S_last = get_feats(S_last_img)
-        f_real = get_feats(x0_real)
-        f_T_last = get_feats(T_last_img)
-        f_inv = get_feats(x0_inv_T)
+        inv_s = cdist_vec(S_f, R_f, eps=eps)
+        inv_t = cdist_vec(T_f, I_f, eps=eps)
 
-        inv_s = cdist_vec(f_S_last, f_real, eps=eps)
-        inv_t = cdist_vec(f_T_last, f_inv, eps=eps)
-
+    # INVINV
     invinv_s = invinv_t = None
     if args.w_invinv != 0.0:
-        # INVINV: pdist within batch for Real vs Inverted
-        f_real = get_feats(x0_real) if (args.w_inv == 0.0) else f_real # reuse if avail
-        f_inv = get_feats(x0_inv_T) if (args.w_inv == 0.0) else f_inv
-        
-        invinv_s = pdist_vec(f_real, eps=eps)
-        invinv_t = pdist_vec(f_inv, eps=eps)
+        invinv_s = pdist_vec(R_f, eps=eps)
+        invinv_t = pdist_vec(I_f, eps=eps)
 
-    # ---- mean normalization (single GPU) ----
-    student_parts: List[torch.Tensor] = []
-    teacher_parts: List[torch.Tensor] = []
 
-    if args.w_rkd != 0.0 and len(rkd_s_list) > 0:
-        student_parts.append(torch.cat(rkd_s_list, dim=0))
-        teacher_parts.append(torch.cat([d for d in rkd_t_list], dim=0))
+    # mean normalization (original behavior)
+    student_parts, teacher_parts = [], []
+
+    if args.w_rkd != 0.0:
+        student_parts.append(rkd_s_list)
+        teacher_parts.append(rkd_t_list)
     if args.w_inv != 0.0 and inv_s is not None:
-        student_parts.append(inv_s); teacher_parts.append(inv_t)
+        student_parts.append(inv_s)
+        teacher_parts.append(inv_t)
     if args.w_invinv != 0.0 and invinv_s is not None:
-        student_parts.append(invinv_s); teacher_parts.append(invinv_t)
+        student_parts.append(invinv_s)
+        teacher_parts.append(invinv_t)
 
     if len(student_parts) > 0:
         student_mean = mean_from_vectors(student_parts, device=device, eps=eps)
@@ -519,64 +686,24 @@ def compute_losses(
         student_mean = torch.tensor(1.0, device=device)
         teacher_mean = torch.tensor(1.0, device=device)
 
-    # Normalize distances
+    # apply normalization + MSE
     if args.w_rkd != 0.0:
-        rkd_s_list = [d / student_mean for d in rkd_s_list]
-        rkd_t_list = [d / teacher_mean for d in rkd_t_list]
+        loss_rkd = F.mse_loss(rkd_s_list / student_mean, rkd_t_list / teacher_mean, reduction="mean")
     if args.w_inv != 0.0 and inv_s is not None:
-        inv_s = inv_s / student_mean
-        inv_t = inv_t / teacher_mean
+        loss_inv = F.mse_loss(inv_s / student_mean, inv_t / teacher_mean, reduction="mean")
     if args.w_invinv != 0.0 and invinv_s is not None:
-        invinv_s = invinv_s / student_mean
-        invinv_t = invinv_t / teacher_mean
+        loss_invinv = F.mse_loss(invinv_s / student_mean, invinv_t / teacher_mean, reduction="mean")
 
-    # ---- scalar losses ----
-    loss_rkd = torch.tensor(0.0, device=device)
-    if args.w_rkd != 0.0 and len(rkd_s_list) > 0:
-        acc = 0.0
-        for ds, dt in zip(rkd_s_list, rkd_t_list):
-            acc = acc + F.mse_loss(ds, dt, reduction="mean")
-        loss_rkd = acc / max(1, len(rkd_s_list))
-
-    loss_inv = torch.tensor(0.0, device=device)
-    if args.w_inv != 0.0 and inv_s is not None:
-        loss_inv = F.mse_loss(inv_s, inv_t, reduction="mean")
-
-    loss_invinv = torch.tensor(0.0, device=device)
-    if args.w_invinv != 0.0 and invinv_s is not None:
-        loss_invinv = F.mse_loss(invinv_s, invinv_t, reduction="mean")
-
-    # ---- TRAIN loss FID (Gaussian over Feature Space) ----
+    # ---- FD (diagonal) ----
     loss_fid = torch.tensor(0.0, device=device)
-    fid_s = fid_t = torch.tensor(0.0, device=device)
+    fid_s = torch.tensor(0.0, device=device)
+    fid_t = torch.tensor(0.0, device=device)
     if args.w_fid != 0.0:
-        S_f = get_feats(S_last_img).float()
-        R_f = get_feats(x0_real).float()
-        T_f = get_feats(T_last_img).float()
-        I_f = get_feats(x0_inv_T).float()
-        
-        fid_s = frechet_distance_diag(S_f, R_f, eps=args.fid_eps)
-        fid_t = frechet_distance_diag(T_f, I_f, eps=args.fid_eps)
+        fid_s = frechet_distance_diag(S_f.float(), R_f.float(), eps=args.fid_eps)
+        fid_t = frechet_distance_diag(T_f.float(), I_f.float(), eps=args.fid_eps)
         loss_fid = fid_s + fid_t
 
-    # ---- SAME (Trajectory Regularization) ----
-    loss_same = torch.tensor(0.0, device=device)
-    if args.w_same != 0.0:
-        xs = torch.stack(preds_S, dim=0)  # [K,B,3,H,W]
-        if args.same_mode == "mean":
-            mu = xs.mean(dim=0, keepdim=True)
-            loss_same = F.mse_loss(xs, mu.expand_as(xs), reduction="mean")
-        else:
-            ref = xs[-1].detach()
-            loss_same = F.mse_loss(xs[:-1], ref.unsqueeze(0).expand_as(xs[:-1]), reduction="mean")
-
-    total = (
-        args.w_rkd * loss_rkd +
-        args.w_inv * loss_inv +
-        args.w_invinv * loss_invinv +
-        args.w_fid * loss_fid +
-        args.w_same * loss_same
-    )
+    total = args.w_rkd * loss_rkd + args.w_inv * loss_inv + args.w_invinv * loss_invinv + args.w_fid * loss_fid
 
     stats = {
         "loss_rkd": loss_rkd.detach(),
@@ -585,11 +712,12 @@ def compute_losses(
         "loss_fid": loss_fid.detach(),
         "fid_s": fid_s.detach(),
         "fid_t": fid_t.detach(),
-        "loss_same": loss_same.detach(),
         "student_mean_dist": student_mean.detach(),
         "teacher_mean_dist": teacher_mean.detach(),
     }
     return total, stats
+
+
 
 def build_loss_logs(total_loss: torch.Tensor, stats: dict, args) -> dict:
     def w_and_raw(raw_val: float, w: float):
@@ -604,7 +732,6 @@ def build_loss_logs(total_loss: torch.Tensor, stats: dict, args) -> dict:
     fid_raw     = float(stats["loss_fid"].item())
     fid_s_raw  = float(stats["fid_s"].item())
     fid_t_raw  = float(stats["fid_t"].item())
-    same_raw   = float(stats["loss_same"].item())
     total      = float(total_loss.detach().item())
 
     rkd_w,    rkd_raw2    = w_and_raw(rkd_raw,    args.w_rkd)
@@ -613,7 +740,6 @@ def build_loss_logs(total_loss: torch.Tensor, stats: dict, args) -> dict:
     fid_w,    fid_raw2    = w_and_raw(fid_raw,    args.w_fid)
     fid_s_w,  fid_s_raw2  = w_and_raw(fid_s_raw,  args.w_fid)
     fid_t_w,  fid_t_raw2  = w_and_raw(fid_t_raw,  args.w_fid)
-    same_w,   same_raw2   = w_and_raw(same_raw,   args.w_same)
 
     logs = {
         "loss/total": total,
@@ -623,12 +749,10 @@ def build_loss_logs(total_loss: torch.Tensor, stats: dict, args) -> dict:
         "loss/fid": fid_w,
         "loss/fid_s": fid_s_w,
         "loss/fid_t": fid_t_w,
-        "loss/same": same_w,
         "loss_raw/rkd": rkd_raw2,
         "loss_raw/inv": inv_raw2,
         "loss_raw/invinv": invinv_raw2,
         "loss_raw/fid": fid_raw2,
-        "loss_raw/same": same_raw2,
     }
     return logs
 
@@ -772,7 +896,9 @@ def train(args):
 
     set_seed(args.seed)
     device = resolve_device(args.device)
-
+    if device.type == "cuda":
+        torch.cuda.set_device(device.index)
+        
     # Init Feature Embedder (for RKD/Losses)
     print(f"[Info] Initializing RKD Feature Embedder: {args.rkd_metric}", flush=True)
     embedder = FeatureEmbedder(
@@ -811,8 +937,7 @@ def train(args):
         else:
             use_amp = False
 
-    if device.type == "cuda":
-        torch.cuda.set_device(device)
+
 
     out_dir = Path(args.output_dir)
     ensure_dir(out_dir)
@@ -837,6 +962,14 @@ def train(args):
     )
     print(f"[Info] Student data images: {len(dataset)} under {args.student_data_dir}", flush=True)
     print(f"[Info] Device: {device} | AMP: {args.mixed_precision if use_amp else 'no'}", flush=True)
+
+    print(f"[Info] Loading offline teacher bank: {args.teacher_bank_dir}", flush=True)
+    bank = OfflineTeacherBankBatcher(
+        bank_root=args.teacher_bank_dir,
+        metric=args.rkd_metric,
+        seed=args.seed,
+    )
+
 
     # ---- FID real cache (test) ----
     fid_real_all_dir = None
@@ -911,7 +1044,9 @@ def train(args):
     print(f"[Info] Teacher params: {count_parameters(teacher):,}", flush=True)
     print(f"[Info] Student params: {count_parameters(student):,}", flush=True)
 
-    optimizer = torch.optim.AdamW(student.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    trainable_params = [p for p in student.parameters() if p.requires_grad]
+    optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
+
     optimizer.zero_grad(set_to_none=True)
 
     # global_step은 위에서 설정됨 (0 또는 resume value)
@@ -924,15 +1059,19 @@ def train(args):
         print(f"[Epoch {epoch}] start (Global Step: {global_step})", flush=True)
 
         for it, x0_real in enumerate(loader, start=1):
-            if args.ddim_steps_min == args.ddim_steps_max:
-                ddim_steps_train = int(args.ddim_steps_min)
-            else:
-                ddim_steps_train = int(torch.randint(args.ddim_steps_min, args.ddim_steps_max + 1, (1,)).item())
 
-            z = torch.randn((args.noise_batch, 3, args.image_size, args.image_size), device=device)
-
+            # rkd_step_k = ddim_steps_train - 1
             x0_real = x0_real.to(device, non_blocking=True)
-            
+
+            # ---- offline bank gives z + teacher_feat + steps ----
+            z_dtype = next(student.parameters()).dtype
+            z, teacher_feat, ddim_steps_train = bank.next(
+                batch_size=args.noise_batch,
+                device=device,
+                z_dtype=z_dtype,
+            )
+
+            rkd_step_k = random.randrange(ddim_steps_train)
 
             if use_amp:
                 autocast_ctx = torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=True)
@@ -940,32 +1079,24 @@ def train(args):
                 autocast_ctx = nullcontext()
 
             with autocast_ctx:
-                with torch.no_grad():
-                    preds_T = teacher_predx0_seq(
-                        teacher, ddim_T, z, steps=ddim_steps_train, eta=args.ddim_eta, device=device
-                    )
                 preds_S = student_predx0_seq_with_grad(
-                    student, ddim_S, z, steps=ddim_steps_train, eta=args.ddim_eta, device=device
+                    student, ddim_S, z, steps=ddim_steps_train, eta=args.ddim_eta, device=device, rkd_step_k=rkd_step_k
+                )
+                zT_real = invert_x0_to_zT_deterministic_x0pred(
+                    student, ddim_S, x0_real, steps=ddim_steps_train, device=device
+                )
+                x0_inv_T = teacher_predx0_seq(
+                    teacher, ddim_T, zT_real, steps=ddim_steps_train, eta=args.ddim_eta, device=device
                 )
 
-            # with torch.no_grad():
-            zT_real = invert_x0_to_zT_deterministic_x0pred(
-                student, ddim_S, x0_real, steps=ddim_steps_train, device=device
+            total_loss, stats = compute_losses(
+                teacher_feat=teacher_feat,
+                preds_S=preds_S,
+                x0_real=x0_real,
+                x0_inv_T=x0_inv_T,
+                embedder=embedder,
+                args=args,
             )
-            preds_T_inv = teacher_predx0_seq(
-                teacher, ddim_T, zT_real, steps=ddim_steps_train, eta=args.ddim_eta, device=device
-            )
-            x0_inv_T = preds_T_inv[-1]
-
-            with autocast_ctx:
-                total_loss, stats = compute_losses(
-                    preds_T=preds_T,
-                    preds_S=preds_S,
-                    x0_real=x0_real,
-                    x0_inv_T=x0_inv_T,
-                    embedder=embedder,
-                    args=args,
-                )
 
             if scaler is not None:
                 scaler.scale(total_loss).backward()
@@ -1059,16 +1190,16 @@ def train(args):
 
 BATCH_SIZE = 8
 CLASSN = 10
-RKD_METRIC="clip" # pixel inception clip dinov3
-CUDA_NUM = 4
+RKD_METRIC="clip" # pixel clip dinov3
+CUDA_NUM = 7
 LR=1e-5
-DATE="0105"
+DATE="0115"
+BANK_DIR = "/workspace/rkd_cifar10_1111/0116_teacher_bank_sft_only_steps40to60_random"
 
 RKD_W = 1.0
 INV_W = 1.0
-INVINV_W = 1.0
-FD_W = 0.01
-SAME_W = 1.0
+INVINV_W = 0.01
+FD_W = 1.0
 
 def build_argparser():
     p = argparse.ArgumentParser("Student x0 distillation with Feature-based losses")
@@ -1078,16 +1209,16 @@ def build_argparser():
     p.add_argument("--student_data_dir", type=str, default="cifar10_student_data_n10/gray3/train")
     p.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test")
     p.add_argument("--teacher_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
-    p.add_argument("--student_dir", type=str, default="ddpm_cifar10_rgb_T400_DDIM50/ckpt_step150000")
-    p.add_argument("--output_dir", type=str, default=f"out_{DATE}_rkd/rkd_{RKD_METRIC}_lora_feature_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}_LR{LR}-EASY_FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps")
+    p.add_argument("--output_dir", type=str, default=f"out_{DATE}_rkd/rkd_{RKD_METRIC}_lora_feature_cifar10_rgb_to_gray_single_batch{BATCH_SIZE}_N{CLASSN}_LR{LR}-EASY_FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-teacher-init-eps-bank")
+    p.add_argument("--run_name", type=str, default=f"student-lora-{RKD_METRIC}-x0-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-teacher-init-eps-EASY-FD-bank")
 
     # Metric Selection for RKD/INV
     p.add_argument(
         "--rkd_metric",
         type=str,
         default=RKD_METRIC,
-        choices=["pixel", "inception", "clip", "dinov3"],
-        help="Metric space for RKD/INV losses: 'pixel', 'inception', 'clip', 'dinov3'.",
+        choices=["pixel", "clip", "dinov3"],
+        help="Metric space for RKD/INV losses: 'pixel', 'clip', 'dinov3'.",
     )
 
     p.add_argument(
@@ -1106,7 +1237,6 @@ def build_argparser():
 
     p.add_argument("--device", type=str, default=f"cuda:{CUDA_NUM}")
     p.add_argument("--project", type=str, default=f"rkd-feature-cifar10-rgb-to-gray-{DATE}")
-    p.add_argument("--run_name", type=str, default=f"student-lora-{RKD_METRIC}-x0-rgb-to-gray-batch{BATCH_SIZE}-N{CLASSN}-LR{LR}-FD-rkdW{RKD_W}-invW{INV_W}-invinvW{INVINV_W}-fdW{FD_W}-sameW{SAME_W}-teacher-init-eps-EASY-FD")
     p.add_argument("--wandb_offline", action="store_true")
     p.add_argument("--mixed_precision", type=str, default="fp16", choices=["no", "fp16", "bf16"])
 
@@ -1126,29 +1256,19 @@ def build_argparser():
     p.add_argument("--train_timesteps", type=int, default=400)
     p.add_argument("--beta_schedule", type=str, default="linear")
 
-    p.add_argument("--ddim_steps_min", type=int, default=40)
-    p.add_argument("--ddim_steps_max", type=int, default=60)
     p.add_argument("--ddim_eta", type=float, default=0.0)
-
-    p.add_argument("--student_channels", type=int, nargs="+", default=[128, 256, 256])
-    p.add_argument("--layers_per_block", type=int, default=2)
-    p.add_argument("--norm_num_groups", type=int, default=32)
 
     p.add_argument("--w_rkd", type=float, default=RKD_W)
     p.add_argument("--w_inv", type=float, default=INV_W)
     p.add_argument("--w_invinv", type=float, default=INVINV_W)
     p.add_argument("--w_fid", type=float, default=FD_W)
-    p.add_argument("--w_same", type=float, default=SAME_W)
 
-    p.add_argument("--rkd_stride", type=int, default=1)
-    p.add_argument("--rkd_teacher_ref", type=str, default="last", choices=["last", "matched"])
-    p.add_argument("--same_mode", type=str, default="mean", choices=["mean", "last"])
     p.add_argument("--fid_eps", type=float, default=1e-8)
 
     p.add_argument("--log_interval", type=int, default=10)
     p.add_argument("--save_interval", type=int, default=2000)
     p.add_argument("--sample_interval", type=int, default=2000)
-    p.add_argument("--sample_n", type=int, default=64)
+    p.add_argument("--sample_n", type=int, default=36)
     p.add_argument("--sample_steps", type=int, default=50)
     p.add_argument("--sample_eta", type=float, default=0.0)
 
@@ -1158,9 +1278,11 @@ def build_argparser():
     p.add_argument("--fid_dims", type=int, default=2048)
     p.add_argument("--fid_keep_gen", action="store_true")
     p.add_argument("--fid_num_samples", type=int, default=0)
-    p.add_argument("--fid_per_class", action="store_false")
     p.add_argument("--fid_no_symlink", action="store_true")
 
+
+    p.add_argument("--teacher_bank_dir", type=str, default=BANK_DIR,
+                help="Offline teacher bank root (created by make_teacher_z_x0_and_feats_0116.py).")
 
     return p
 
@@ -1169,3 +1291,4 @@ if __name__ == "__main__":
     args = build_argparser().parse_args()
     ensure_dir(Path(args.output_dir))
     train(args)
+

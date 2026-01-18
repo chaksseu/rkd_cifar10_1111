@@ -5,7 +5,7 @@
 Stable Diffusion 1.5 Teacher/Student (LoRA) distillation
 - Feature losses computed on decoded RGB images
 - Inversion: GT image -> VAE latent -> DDIMInverse (UNet + text cond) -> noise
-- Dataset: (image, text). Text prompt = parent folder name (CIFAR10 class name)
+- Dataset: (image, text). Text prompt = parent folder name (Imagenet class name)
 
 Deps:
   pip install -U diffusers transformers peft torch torchvision pytorch-fid
@@ -180,6 +180,22 @@ def pdist_vec(x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 def cdist_vec(x: torch.Tensor, y: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     return torch.cdist(x, y, p=2).reshape(-1).clamp_min(eps)
 
+def cdist_offdiag_vec(x: torch.Tensor, y: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
+    """
+    Return flattened cdist(x,y) excluding diagonal entries when x,y have same batch size.
+    If batch size differs or B<=1, fall back to full flatten (or diagonal 포함).
+    """
+    D = torch.cdist(x, y, p=2)  # (Bx, By)
+
+    Bx, By = D.shape
+    if Bx == By and Bx > 1:
+        mask = ~torch.eye(Bx, dtype=torch.bool, device=D.device)
+        v = D[mask]  # (Bx*By - Bx,)
+    else:
+        v = D.reshape(-1)  # fallback
+
+    return v.clamp_min(eps)
+
 def set_seed(seed: int):
     import random
     random.seed(seed)
@@ -211,23 +227,47 @@ def resolve_device(device_str: str) -> torch.device:
 def collect_image_paths_recursive(root: Path, exts={".png", ".jpg", ".jpeg"}) -> List[Path]:
     return [p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in exts]
 
-def flatten_real_cache(test_dir: Path, cache_dir: Path, use_symlink: bool = True) -> int:
+def flatten_real_cache(
+    test_dir: Path,
+    cache_dir: Path,
+    use_symlink: bool = True,
+    do_preprocess: bool = False,
+    image_size: int = 512,
+) -> int:
     ensure_dir(cache_dir)
     existing = list(cache_dir.glob("*"))
     if len(existing) > 0:
         return len(existing)
+
     paths = collect_image_paths_recursive(test_dir)
     print(f"[FID] Flattening test set ({len(paths)} imgs) to {cache_dir} ...", flush=True)
+
+    if do_preprocess:
+        fid_tf = T.Compose([
+            T.Resize(image_size, interpolation=T.InterpolationMode.BICUBIC, antialias=True),  # shortest edge
+            T.CenterCrop(image_size),
+        ])
+
     for i, src in enumerate(paths, 1):
-        dst = cache_dir / f"real_{i:06d}{src.suffix.lower()}"
-        try:
-            if use_symlink:
-                os.symlink(src.resolve(), dst)
-            else:
+        # 전처리 저장이면 포맷 통일을 위해 png로 저장 권장
+        if do_preprocess:
+            dst = cache_dir / f"real_{i:06d}.png"
+            with Image.open(src) as img:
+                img = img.convert("RGB")
+                img = fid_tf(img)
+                img.save(dst)
+        else:
+            dst = cache_dir / f"real_{i:06d}{src.suffix.lower()}"
+            try:
+                if use_symlink:
+                    os.symlink(src.resolve(), dst)
+                else:
+                    shutil.copy2(src, dst)
+            except Exception:
                 shutil.copy2(src, dst)
-        except Exception:
-            shutil.copy2(src, dst)
+
     return len(paths)
+
 
 def frechet_distance_diag(X: torch.Tensor, Y: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     X = X.float()
@@ -254,7 +294,15 @@ class ImageTextFolderDataset(Dataset):
       image: (3,H,W) in [-1,1]
       text:  str (class_name)
     """
-    def __init__(self, root: str, image_size: int = 512, center_crop: bool = True, horizontal_flip: bool = True):
+    def __init__(
+        self,
+        root: str,
+        image_size: int = 512,
+        split: str = "train",          # <-- 추가: "train" or "fid"/"eval"
+        horizontal_flip: bool = True,
+        rrc_scale: Tuple[float, float] = (0.8, 1.0),   # <-- 권장: RandomResizedCrop scale
+        rrc_ratio: Tuple[float, float] = (3/4, 4/3),   # <-- 권장: ratio
+    ):
         self.root = Path(root)
         exts = {".png", ".jpg", ".jpeg"}
         self.files: List[Path] = []
@@ -264,15 +312,29 @@ class ImageTextFolderDataset(Dataset):
         if len(self.files) == 0:
             raise FileNotFoundError(f"No images found under {self.root}!")
 
-        # class names (immediate parent directory name)
         self.class_names = sorted({p.parent.name for p in self.files})
 
-        tfms = [T.Resize(image_size, interpolation=T.InterpolationMode.BICUBIC, antialias=True)]
-        if center_crop:
-            tfms.append(T.CenterCrop(image_size))
-        if horizontal_flip:
-            tfms.append(T.RandomHorizontalFlip(p=0.5))
-        tfms.append(T.ToTensor())
+        if split == "train":
+            tfms = [
+                T.RandomResizedCrop(
+                    image_size,
+                    scale=rrc_scale,
+                    ratio=rrc_ratio,
+                    interpolation=T.InterpolationMode.BICUBIC,
+                    antialias=True,
+                )
+            ]
+            if horizontal_flip:
+                tfms.append(T.RandomHorizontalFlip(p=0.5))
+            tfms.append(T.ToTensor())
+        else:
+            # FID 평가: Resize shortest + CenterCrop
+            tfms = [
+                T.Resize(image_size, interpolation=T.InterpolationMode.BICUBIC, antialias=True),
+                T.CenterCrop(image_size),
+                T.ToTensor(),
+            ]
+
         self.to_tensor = T.Compose(tfms)
 
     def __len__(self):
@@ -280,16 +342,16 @@ class ImageTextFolderDataset(Dataset):
 
     def __getitem__(self, idx: int):
         path = self.files[idx]
-        prompt = path.parent.name  # folder name
+        prompt = path.parent.name
         with Image.open(path) as img:
-            img = img.convert("RGB")
+            img = img.convert("RGB")  # gray라도 3채널로 복제 -> SD/VAE/Embedder에 안전
             x01 = self.to_tensor(img)
         x = x01 * 2.0 - 1.0
         return x, prompt
 
-def collate_image_text(batch: List[Tuple[torch.Tensor, str]]):
-    imgs = torch.stack([b[0] for b in batch], dim=0)
-    texts = [b[1] for b in batch]
+def collate_image_text(batch: List[Tuple[torch.Tensor, str]]): 
+    imgs = torch.stack([b[0] for b in batch], dim=0) 
+    texts = [b[1] for b in batch] 
     return imgs, texts
 
 
@@ -326,7 +388,6 @@ def decode_latents_to_images(vae: AutoencoderKL, latents: torch.Tensor, scaling_
 class TextCondCache:
     """
     Cache text encoder outputs per unique prompt string.
-    CIFAR10은 클래스 10개라 캐시 효과가 큼.
     """
     def __init__(self):
         self.cache: Dict[Tuple[str, torch.dtype, str], torch.Tensor] = {}
@@ -454,7 +515,7 @@ def invert_x0latent_to_noise(
     inv = DDIMInverseScheduler.from_config(scheduler.config)
     inv.set_timesteps(steps, device=device)
 
-    unet.eval()
+    # unet.eval()
     xt = x0_latent
     for t in inv.timesteps:
         x_in = inv.scale_model_input(xt, t)
@@ -548,8 +609,8 @@ def compute_losses(
     # INV
     inv_s = inv_t = None
     if args.w_inv != 0.0:
-        inv_s = cdist_vec(S_f, R_f, eps=eps)
-        inv_t = cdist_vec(T_f, I_f, eps=eps)
+        inv_s = cdist_offdiag_vec(S_f, R_f, eps=eps)
+        inv_t = cdist_offdiag_vec(T_f, I_f, eps=eps)
 
     # INVINV
     invinv_s = invinv_t = None
@@ -858,9 +919,10 @@ def train(args):
     dataset = ImageTextFolderDataset(
         args.student_data_dir,
         image_size=args.image_size,
-        center_crop=args.center_crop,
+        split="train",
         horizontal_flip=not args.no_hflip,
     )
+
     class_names = dataset.class_names
     loader = DataLoader(
         dataset,
@@ -882,7 +944,13 @@ def train(args):
         if test_dir.exists():
             fid_real_root = out_dir / "fid" / "real_cache"
             fid_real_all_dir = fid_real_root / "all"
-            num_test_imgs_all = flatten_real_cache(test_dir, fid_real_all_dir, use_symlink=not args.fid_no_symlink)
+            num_test_imgs_all = flatten_real_cache(
+                test_dir,
+                fid_real_all_dir,
+                use_symlink=False,
+                do_preprocess=False,
+                image_size=args.image_size,
+            )
             print(f"[FID] Real cache: N={num_test_imgs_all} @ {fid_real_all_dir}", flush=True)
         else:
             args.disable_fid = True
@@ -1089,16 +1157,17 @@ def train(args):
 
 
 # ------------------------- Args -------------------------
-DATE="0115"
+DATE="0118"
 BATCH_SIZE = 2
-CUDA_NUM = 5
+CUDA_NUM = 7
 LR = 1e-5
 RKD_METRIC = "clip" # ["pixel", "inception", "clip", "dinov3"]
+N_IMAGES = 10
 
 RKD_W = 1.0
 INV_W = 1.0
 INVINV_W = 1.0
-FD_W = 0.001
+FD_W = 0.0001
 
 def build_argparser():
     p = argparse.ArgumentParser("SD1.5 Teacher/Student LoRA distillation (image+text; prompt=folder name)")
@@ -1112,9 +1181,9 @@ def build_argparser():
     p.add_argument("--resume_checkpoint", type=str, default="")
 
     # data
-    p.add_argument("--student_data_dir", type=str, default="cifar10_student_data_n10/gray3/train")
-    p.add_argument("--test_dir", type=str, default="cifar10_png_linear_only/gray3/test")
-    p.add_argument("--output_dir", type=str, default=f"{DATE}_kd_sd_cifar10_gray-one-inv-eval-{RKD_METRIC}-B{BATCH_SIZE}-LR{LR}-RKD{RKD_W}-INV{INV_W}-INVINV{INVINV_W}-FD{FD_W}")
+    p.add_argument("--student_data_dir", type=str, default=f"/workspace/rkd_cifar10_1111/imagenet1k_export/gray3_subset_per{N_IMAGES}/train")
+    p.add_argument("--test_dir", type=str, default="/workspace/rkd_cifar10_1111/imagenet1k_export/gray3/val")
+    p.add_argument("--output_dir", type=str, default=f"{DATE}_kd_sd_gray-imagenet-one-inv-eval-{RKD_METRIC}-B{BATCH_SIZE}-LR{LR}-RKD{RKD_W}-INV{INV_W}-INVINV{INVINV_W}-FD{FD_W}-N{N_IMAGES}")
 
     # metric
     p.add_argument("--rkd_metric", type=str, default=RKD_METRIC, choices=["pixel", "inception", "clip", "dinov3"])
@@ -1124,7 +1193,7 @@ def build_argparser():
     # device
     p.add_argument("--device", type=str, default=f"cuda:{CUDA_NUM}")
     p.add_argument("--project", type=str, default=f"{DATE}_rkd-feature-sd15")
-    p.add_argument("--run_name", type=str, default=f"student-lora-sd15-one-inv-eval-{RKD_METRIC}-B{BATCH_SIZE}-LR{LR}-RKD{RKD_W}-INV{INV_W}-INVINV{INVINV_W}-FD{FD_W}")
+    p.add_argument("--run_name", type=str, default=f"student-lora-sd15-gray-imagenet-one-inv-eval-{RKD_METRIC}-B{BATCH_SIZE}-LR{LR}-RKD{RKD_W}-INV{INV_W}-INVINV{INVINV_W}-FD{FD_W}-N{N_IMAGES}")
     p.add_argument("--wandb_offline", action="store_true")
     p.add_argument("--mixed_precision", type=str, default="bf16", choices=["no", "fp16", "bf16"])
 
@@ -1132,7 +1201,7 @@ def build_argparser():
     p.add_argument("--image_size", type=int, default=512)
     p.add_argument("--center_crop", action="store_true")
     p.add_argument("--no_hflip", action="store_true")
-    p.add_argument("--num_workers", type=int, default=4)
+    p.add_argument("--num_workers", type=int, default=8)
 
     # train
     p.add_argument("--epochs", type=int, default=1000000)
@@ -1143,8 +1212,8 @@ def build_argparser():
     p.add_argument("--seed", type=int, default=42)
 
     # ddim
-    p.add_argument("--ddim_steps_min", type=int, default=6)
-    p.add_argument("--ddim_steps_max", type=int, default=10)
+    p.add_argument("--ddim_steps_min", type=int, default=9)
+    p.add_argument("--ddim_steps_max", type=int, default=11)
     p.add_argument("--ddim_eta", type=float, default=0.0)
 
     # LoRA
@@ -1162,10 +1231,10 @@ def build_argparser():
 
     # logging / eval
     p.add_argument("--log_interval", type=int, default=1)
-    p.add_argument("--save_interval", type=int, default=2000)
-    p.add_argument("--sample_interval", type=int, default=2000)
+    p.add_argument("--save_interval", type=int, default=4000)
+    p.add_argument("--sample_interval", type=int, default=4000)
     p.add_argument("--sample_n", type=int, default=25)
-    p.add_argument("--sample_steps", type=int, default=8)
+    p.add_argument("--sample_steps", type=int, default=10)
     p.add_argument("--sample_eta", type=float, default=0.0)
 
     # fid
