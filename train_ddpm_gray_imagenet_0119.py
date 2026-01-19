@@ -2,21 +2,20 @@
 # -*- coding: utf-8 -*-
 
 """
-Stable Diffusion 1.5 LoRA fine-tuning with plain diffusion loss (DDPM epsilon objective)
+SD1.5 LoRA fine-tuning with plain diffusion loss (DDPM objective)
 
-What this does
 - Loads SD1.5 (tokenizer/text_encoder/vae/unet)
 - Freezes everything except UNet LoRA weights
-- Training objective (standard diffusion):
+- Training objective (standard diffusion in latent space):
     1) Encode GT image -> VAE latent (scaled)
     2) Sample timestep t
     3) Add noise: z_t = q(z_t | z_0)
-    4) UNet predicts epsilon from (z_t, t, text_cond)
-    5) MSE(eps_pred, eps_gt)
+    4) UNet predicts epsilon (or v) from (z_t, t, text_cond)
+    5) MSE(pred, target)
 
 Eval
-- Periodic DDIM sampling (conditional on folder-name prompts)
-- Optional FID via pytorch-fid (same style as your reference code)
+- Periodic DDIM sampling (prompt = folder name)
+- Optional FID via pytorch-fid
 
 Deps
   pip install -U diffusers transformers peft torch torchvision pytorch-fid
@@ -32,7 +31,6 @@ from contextlib import nullcontext
 import random
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
@@ -42,7 +40,6 @@ from PIL import Image
 
 from diffusers import AutoencoderKL, UNet2DConditionModel, DDPMScheduler, DDIMScheduler
 from peft import LoraConfig, get_peft_model, PeftModel
-
 from transformers import CLIPTokenizer, CLIPTextModel
 
 
@@ -78,6 +75,23 @@ def get_model_dtype(args, device: torch.device) -> torch.dtype:
     if args.mixed_precision == "bf16":
         return torch.bfloat16
     return torch.float32
+
+def get_unet_compute_dtype(unet) -> torch.dtype:
+    """
+    PeftModel의 첫 parameter가 LoRA(fp32)일 수 있어서, base dtype을 최대한 추론.
+    """
+    # peft 구조: PeftModel.base_model.model == 실제 UNet (대부분)
+    try:
+        if hasattr(unet, "base_model") and hasattr(unet.base_model, "model"):
+            return unet.base_model.model.dtype
+    except Exception:
+        pass
+    try:
+        if hasattr(unet, "dtype"):
+            return unet.dtype
+    except Exception:
+        pass
+    return next(unet.parameters()).dtype
 
 def to_grid(images: torch.Tensor, nrow: int = 4) -> Image.Image:
     imgs = (images.clamp(-1, 1) + 1) / 2.0
@@ -166,6 +180,7 @@ class ImageTextFolderDataset(Dataset):
         image_size: int = 256,
         split: str = "train",  # "train" or "eval"
         horizontal_flip: bool = True,
+        use_center_crop_train: bool = False,
         rrc_scale: Tuple[float, float] = (0.8, 1.0),
         rrc_ratio: Tuple[float, float] = (3/4, 4/3),
     ):
@@ -181,15 +196,21 @@ class ImageTextFolderDataset(Dataset):
         self.class_names = sorted({p.parent.name for p in self.files})
 
         if split == "train":
-            tfms = [
-                T.RandomResizedCrop(
-                    image_size,
-                    scale=rrc_scale,
-                    ratio=rrc_ratio,
-                    interpolation=T.InterpolationMode.BICUBIC,
-                    antialias=True,
-                )
-            ]
+            if use_center_crop_train:
+                tfms = [
+                    T.Resize(image_size, interpolation=T.InterpolationMode.BICUBIC, antialias=True),
+                    T.CenterCrop(image_size),
+                ]
+            else:
+                tfms = [
+                    T.RandomResizedCrop(
+                        image_size,
+                        scale=rrc_scale,
+                        ratio=rrc_ratio,
+                        interpolation=T.InterpolationMode.BICUBIC,
+                        antialias=True,
+                    )
+                ]
             if horizontal_flip:
                 tfms.append(T.RandomHorizontalFlip(p=0.5))
             tfms.append(T.ToTensor())
@@ -225,6 +246,8 @@ def collate_image_text(batch: List[Tuple[torch.Tensor, str]]):
 class TextCondCache:
     """
     Cache text encoder outputs per unique prompt string.
+    WARNING: if you have thousands of unique class names, cache can grow.
+    (For ImageNet folder prompts, it is usually bounded.)
     """
     def __init__(self):
         self.cache: Dict[Tuple[str, torch.dtype, str], torch.Tensor] = {}
@@ -238,7 +261,6 @@ class TextCondCache:
         device: torch.device,
         dtype: torch.dtype,
     ) -> torch.Tensor:
-        # Return: (B,77,768)
         out_list = []
         for p in prompts:
             key = (p, dtype, str(device))
@@ -279,7 +301,7 @@ def decode_latents_to_images(vae: AutoencoderKL, latents: torch.Tensor, scaling_
     return imgs
 
 
-# ------------------------- Sampling (DDIM) for eval -------------------------
+# ------------------------- Sampling (DDIM) -------------------------
 
 @torch.no_grad()
 def sample_images_sd_ddim(
@@ -300,15 +322,15 @@ def sample_images_sd_ddim(
     amp_dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
     unet.eval()
-    dtype = next(unet.parameters()).dtype
-    cond = text_cache.get(tokenizer, text_encoder, prompts, device=device, dtype=dtype)
+    u_dtype = get_unet_compute_dtype(unet)
+    cond = text_cache.get(tokenizer, text_encoder, prompts, device=device, dtype=u_dtype)
 
     local = DDIMScheduler.from_config(scheduler.config)
     local.set_timesteps(steps, device=device)
 
     h = image_size // 8
     w = image_size // 8
-    x = torch.randn((len(prompts), 4, h, w), device=device, dtype=dtype, generator=generator)
+    x = torch.randn((len(prompts), 4, h, w), device=device, dtype=u_dtype, generator=generator)
 
     autocast_ctx = (
         torch.autocast(device_type="cuda", dtype=amp_dtype, enabled=True)
@@ -466,7 +488,9 @@ def eval_sample_and_fid(
 
 def train(args):
     torch.backends.cudnn.benchmark = True
-    if args.tf32 and torch.cuda.is_available():
+
+    # args.tf32가 없어서 터지는 케이스 방지 + CLI로 제어 가능
+    if getattr(args, "tf32", False) and torch.cuda.is_available():
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
 
@@ -522,6 +546,7 @@ def train(args):
         image_size=args.image_size,
         split="train",
         horizontal_flip=not args.no_hflip,
+        use_center_crop_train=bool(args.center_crop),
     )
     class_names = dataset.class_names
     loader = DataLoader(
@@ -534,7 +559,7 @@ def train(args):
         collate_fn=collate_image_text,
     )
     print(f"[Info] Data: {len(dataset)} imgs under {args.student_data_dir}", flush=True)
-    print(f"[Info] Classes (prompts): {class_names}", flush=True)
+    print(f"[Info] Classes (prompts): {len(class_names)}", flush=True)
 
     # FID real cache
     fid_real_all_dir = None
@@ -547,7 +572,7 @@ def train(args):
             num_test_imgs_all = flatten_real_cache(
                 test_dir,
                 fid_real_all_dir,
-                use_symlink=False,
+                use_symlink=(not args.fid_no_symlink),
                 do_preprocess=args.fid_preprocess,
                 image_size=args.image_size,
             )
@@ -588,6 +613,7 @@ def train(args):
     if args.resume_checkpoint and os.path.exists(args.resume_checkpoint):
         print(f"[Info] Resuming from: {args.resume_checkpoint}", flush=True)
         student = PeftModel.from_pretrained(base_unet, args.resume_checkpoint, is_trainable=True)
+        # best-effort global_step parse
         try:
             ckpt_name = Path(args.resume_checkpoint).name
             if "step" in ckpt_name:
@@ -628,12 +654,10 @@ def train(args):
 
     text_cache = TextCondCache()
 
-    # Step-based stopping is usually easier than huge epochs
-    max_steps = int(args.max_train_steps) if args.max_train_steps > 0 else None
+    # stopping
+    max_steps: Optional[int] = int(args.max_train_steps) if int(args.max_train_steps) > 0 else None
 
-    epoch = 0
-    while True:
-        epoch += 1
+    for epoch in range(1, int(args.epochs) + 1):
         student.train()
         print(f"[Epoch {epoch}] start (Global Step: {global_step})", flush=True)
 
@@ -641,19 +665,18 @@ def train(args):
             x0_real_img = x0_real_img.to(device, non_blocking=True)
             B = x0_real_img.shape[0]
 
+            u_dtype = get_unet_compute_dtype(student)
+
             # Text cond (no grad)
-            cond_dtype = next(student.parameters()).dtype
             with torch.no_grad():
-                cond = text_cache.get(tokenizer, text_encoder, prompts, device=device, dtype=cond_dtype)
+                cond = text_cache.get(tokenizer, text_encoder, prompts, device=device, dtype=u_dtype)
 
             # Encode to latents (no grad; VAE frozen)
             with torch.no_grad():
-                x0_lat = encode_images_to_latents(vae, x0_real_img, scaling_factor=vae_scaling).to(dtype=cond_dtype)
+                x0_lat = encode_images_to_latents(vae, x0_real_img, scaling_factor=vae_scaling).to(dtype=u_dtype)
 
             # Sample timesteps and noise
-            timesteps = torch.randint(
-                0, ddpm.config.num_train_timesteps, (B,), device=device, dtype=torch.long
-            )
+            timesteps = torch.randint(0, ddpm.config.num_train_timesteps, (B,), device=device, dtype=torch.long)
             noise = torch.randn_like(x0_lat)
             zt = ddpm.add_noise(x0_lat, noise, timesteps)
 
@@ -664,20 +687,17 @@ def train(args):
             )
 
             with autocast_ctx:
-                eps_pred = student(zt, timesteps, encoder_hidden_states=cond).sample
+                pred = student(zt, timesteps, encoder_hidden_states=cond).sample
 
                 if args.prediction_type == "epsilon":
                     target = noise
                 elif args.prediction_type == "v_prediction":
-                    # v = alpha_t * eps - sigma_t * x0  (diffusers provides helper)
                     target = ddpm.get_velocity(x0_lat, noise, timesteps)
                 else:
                     raise ValueError(f"Unsupported prediction_type: {args.prediction_type}")
 
-                loss = F.mse_loss(eps_pred.float(), target.float(), reduction="mean")
-
-                # optional: simple latent-scale normalization (rarely needed)
-                if args.loss_scale != 1.0:
+                loss = F.mse_loss(pred.float(), target.float(), reduction="mean")
+                if float(args.loss_scale) != 1.0:
                     loss = loss * float(args.loss_scale)
 
             if scaler is not None:
@@ -699,7 +719,6 @@ def train(args):
             optimizer.zero_grad(set_to_none=True)
             global_step += 1
 
-            # logging
             if global_step % args.log_interval == 0:
                 line = f"[Train] step={global_step:08d} loss={float(loss.detach().item()):.6f}"
                 print(line, flush=True)
@@ -708,13 +727,17 @@ def train(args):
                 if wandb_run is not None and wandb is not None:
                     try:
                         wandb.log(
-                            {"loss/ddpm": float(loss.detach().item()), "train/epoch": int(epoch), "train/step": int(global_step)},
+                            {
+                                "loss/ddpm": float(loss.detach().item()),
+                                "train/epoch": int(epoch),
+                                "train/step": int(global_step),
+                                "train/lr": float(args.lr),
+                            },
                             step=global_step,
                         )
                     except Exception:
                         pass
 
-            # eval samples / fid
             if args.sample_interval > 0 and (global_step % args.sample_interval == 0):
                 eval_sample_and_fid(
                     student_unet=student,
@@ -738,52 +761,47 @@ def train(args):
                     class_names=class_names,
                 )
 
-            # save
             if args.save_interval > 0 and (global_step % args.save_interval == 0):
                 save_dir = out_dir / "ckpts" / f"ckpt_step{global_step:06d}"
                 ensure_dir(save_dir)
                 student.save_pretrained(save_dir.as_posix())
-                # save schedulers for reproducibility
                 ddpm.save_pretrained(save_dir.as_posix())
                 ddim.save_pretrained(save_dir.as_posix())
                 with (save_dir / "base_model.txt").open("w", encoding="utf-8") as f:
                     f.write(args.sd_model_id + "\n")
                 print(f"[CKPT] Saved LoRA to {save_dir}", flush=True)
 
-            # stopping
             if max_steps is not None and global_step >= max_steps:
                 print(f"[Done] Reached max_train_steps={max_steps}.", flush=True)
                 return
 
 
-# ------------------------- Args (DDPM LoRA baseline; defaults aligned to your KD script style) -------------------------
+# ------------------------- Args (defaults aligned to your KD script style) -------------------------
 
 DATE = "0118"
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 CUDA_NUM = 6
 LR = 1e-5
-
-# keep the same dataset convention you used
 N_IMAGES = 1
 CLASS_PCT = 50
 
 def build_argparser():
-    p = argparse.ArgumentParser("SD1.5 LoRA training with plain DDPM diffusion loss (image+text; prompt=folder name)")
+    p = argparse.ArgumentParser("SD1.5 LoRA training with plain DDPM diffusion loss (prompt=folder name)")
 
     # SD
     p.add_argument("--sd_model_id", type=str, default="runwayml/stable-diffusion-v1-5")
     p.add_argument("--vae_scaling_factor", type=float, default=0.18215)
-    p.add_argument("--fallback_prompt", type=str, default="")  # if no class names found
+    p.add_argument("--fallback_prompt", type=str, default="")
 
     # resume
     p.add_argument("--resume_checkpoint", type=str, default="")
 
-    # data (same train/eval dirs as your KD defaults)
+    # data (your convention)
     p.add_argument(
         "--student_data_dir",
         type=str,
         default=f"/workspace/rkd_cifar10_1111/imagenet1k_export/gray3_subset_class{CLASS_PCT}pct_per{N_IMAGES}_seed0/train",
-    ) # gray3_subset_per10
+    )
     p.add_argument("--test_dir", type=str, default="/workspace/rkd_cifar10_1111/imagenet1k_export/gray3/val_256cc")
     p.add_argument(
         "--output_dir",
@@ -792,33 +810,34 @@ def build_argparser():
                 f"ddpm-loss-B{BATCH_SIZE}-LR{LR}_class{CLASS_PCT}pct_per{N_IMAGES}",
     )
 
-    # device / logging identity (match your style)
+    # device / experiment identity
     p.add_argument("--device", type=str, default=f"cuda:{CUDA_NUM}")
     p.add_argument("--project", type=str, default=f"{DATE}_sd15-ddpm-lora")
     p.add_argument(
         "--run_name",
         type=str,
-        default=f"sd15-lora-ddpm-gray-imagenet-"
-                f"B{BATCH_SIZE}-LR{LR}_class{CLASS_PCT}pct_per{N_IMAGES}",
+        default=f"sd15-lora-ddpm-gray-imagenet-B{BATCH_SIZE}-LR{LR}_class{CLASS_PCT}pct_per{N_IMAGES}",
     )
     p.add_argument("--wandb_offline", action="store_true")
     p.add_argument("--mixed_precision", type=str, default="bf16", choices=["no", "fp16", "bf16"])
+    p.add_argument("--tf32", action="store_true", help="Enable TF32 matmul/cudnn on Ampere+ for speed")
 
-    # image
+    # image / dataloader
     p.add_argument("--image_size", type=int, default=256)
-    p.add_argument("--center_crop", action="store_true")  # kept for interface compatibility (not strictly needed)
+    p.add_argument("--center_crop", action="store_true", help="If set, train also uses Resize+CenterCrop (instead of RRC)")
     p.add_argument("--no_hflip", action="store_true")
     p.add_argument("--num_workers", type=int, default=8)
 
-    # train (keep your epoch convention, but DDPM script may also support max_train_steps separately if you added it)
+    # train
     p.add_argument("--epochs", type=int, default=1000000)
+    p.add_argument("--max_train_steps", type=int, default=0, help="If >0, stop after this many steps (recommended)")
     p.add_argument("--real_batch", type=int, default=BATCH_SIZE)
     p.add_argument("--lr", type=float, default=LR)
     p.add_argument("--weight_decay", type=float, default=0.0)
     p.add_argument("--max_grad_norm", type=float, default=1.0)
     p.add_argument("--seed", type=int, default=42)
 
-    # DDPM training objective configs (new, but stable defaults)
+    # DDPM objective
     p.add_argument("--num_train_timesteps", type=int, default=1000)
     p.add_argument("--beta_start", type=float, default=0.00085)
     p.add_argument("--beta_end", type=float, default=0.012)
@@ -827,31 +846,32 @@ def build_argparser():
     p.add_argument("--prediction_type", type=str, default="epsilon", choices=["epsilon", "v_prediction"])
     p.add_argument("--loss_scale", type=float, default=1.0)
 
-    # LoRA (same defaults)
+    # LoRA
     p.add_argument("--lora_rank", type=int, default=32)
     p.add_argument("--lora_alpha", type=int, default=32)
-    p.add_argument("--lora_targets", type=str, default="to_q,to_k,to_v,to_out.0")
+    determine_targets = "to_q,to_k,to_v,to_out.0"
+    p.add_argument("--lora_targets", type=str, default=determine_targets)
     p.add_argument("--lora_init", type=str, default="gaussian", choices=["gaussian", "default"])
 
-    # logging / eval (same cadence)
-    p.add_argument("--log_interval", type=int, default=10)
-    p.add_argument("--save_interval", type=int, default=250)
-    p.add_argument("--sample_interval", type=int, default=250)
+    # logging / eval
+    p.add_argument("--log_interval", type=int, default=5)
+    p.add_argument("--save_interval", type=int, default=125)
+    p.add_argument("--sample_interval", type=int, default=125)
     p.add_argument("--sample_n", type=int, default=25)
     p.add_argument("--sample_steps", type=int, default=20)
     p.add_argument("--sample_eta", type=float, default=0.0)
 
-    # fid (same defaults)
+    # fid
     p.add_argument("--disable_fid", action="store_true")
-    p.add_argument("--fid_batch_size", type=int, default=32)
+    p.add_argument("--fid_preprocess", action="store_true", help="Preprocess val images into 256cc PNGs in real_cache")
+    p.add_argument("--fid_batch_size", type=int, default=64)
     p.add_argument("--fid_gen_batch", type=int, default=128)
     p.add_argument("--fid_dims", type=int, default=2048)
     p.add_argument("--fid_keep_gen", action="store_true")
     p.add_argument("--fid_num_samples", type=int, default=0)
-    p.add_argument("--fid_no_symlink", action="store_true")  # interface compatibility
+    p.add_argument("--fid_no_symlink", action="store_true")
 
     return p
-
 
 
 if __name__ == "__main__":

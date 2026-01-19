@@ -805,3 +805,7 @@
 [Epoch 004] step=00007990 total=0.527139 rkd=0.010639 inv=0.010253 invinv=0.007480 fid=498.767029
 [Epoch 004] step=00008000 total=0.700707 rkd=0.007163 inv=0.023955 invinv=0.039333 fid=630.256836
 [EVAL] step=00008000 saved_samples=0118_kd_sd_gray-imagenet/one-inv-eval-clip-B4-LR1e-05-RKD1.0-INV1.0-INVINV1.0-FD0.001-N10/samples/samples_step00008000.png
+[FID] step=00008000 fid_all=46.916061 N=50000
+[Epoch 004] step=00008010 total=0.495836 rkd=0.031508 inv=0.026534 invinv=0.012885 fid=424.909180
+[Epoch 004] step=00008020 total=0.628740 rkd=0.039917 inv=0.022442 invinv=0.007516 fid=558.864502
+[Epoch 004] step=00008030 total=0.541945 rkd=0.008631 inv=0.013528 invinv=0.015790 fid=503.996338

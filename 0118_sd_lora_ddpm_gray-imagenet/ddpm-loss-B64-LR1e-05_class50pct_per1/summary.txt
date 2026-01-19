@@ -1,0 +1,3 @@
+[Train] step=00000005 loss=0.192922
+[Train] step=00000010 loss=0.182275
+[Train] step=00000015 loss=0.216381
