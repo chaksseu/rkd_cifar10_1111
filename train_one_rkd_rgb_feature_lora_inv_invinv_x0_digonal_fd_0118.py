@@ -232,7 +232,7 @@ def flatten_real_cache(
     cache_dir: Path,
     use_symlink: bool = True,
     do_preprocess: bool = False,
-    image_size: int = 512,
+    image_size: int = 256,
 ) -> int:
     ensure_dir(cache_dir)
     existing = list(cache_dir.glob("*"))
@@ -297,7 +297,7 @@ class ImageTextFolderDataset(Dataset):
     def __init__(
         self,
         root: str,
-        image_size: int = 512,
+        image_size: int = 256,
         split: str = "train",          # <-- 추가: "train" or "fid"/"eval"
         horizontal_flip: bool = True,
         rrc_scale: Tuple[float, float] = (0.8, 1.0),   # <-- 권장: RandomResizedCrop scale
@@ -1158,16 +1158,18 @@ def train(args):
 
 # ------------------------- Args -------------------------
 DATE="0118"
-BATCH_SIZE = 2
-CUDA_NUM = 7
+BATCH_SIZE = 4
+CUDA_NUM = 6
 LR = 1e-5
 RKD_METRIC = "clip" # ["pixel", "inception", "clip", "dinov3"]
-N_IMAGES = 10
+N_IMAGES = 1
+CLASS_PCT = 50
 
 RKD_W = 1.0
 INV_W = 1.0
 INVINV_W = 1.0
-FD_W = 0.0001
+FD_W = 0.01
+
 
 def build_argparser():
     p = argparse.ArgumentParser("SD1.5 Teacher/Student LoRA distillation (image+text; prompt=folder name)")
@@ -1181,9 +1183,9 @@ def build_argparser():
     p.add_argument("--resume_checkpoint", type=str, default="")
 
     # data
-    p.add_argument("--student_data_dir", type=str, default=f"/workspace/rkd_cifar10_1111/imagenet1k_export/gray3_subset_per{N_IMAGES}/train")
-    p.add_argument("--test_dir", type=str, default="/workspace/rkd_cifar10_1111/imagenet1k_export/gray3/val")
-    p.add_argument("--output_dir", type=str, default=f"{DATE}_kd_sd_gray-imagenet-one-inv-eval-{RKD_METRIC}-B{BATCH_SIZE}-LR{LR}-RKD{RKD_W}-INV{INV_W}-INVINV{INVINV_W}-FD{FD_W}-N{N_IMAGES}")
+    p.add_argument("--student_data_dir", type=str, default=f"/workspace/rkd_cifar10_1111/imagenet1k_export/gray3_subset_class{CLASS_PCT}pct_per{N_IMAGES}_seed0/train")
+    p.add_argument("--test_dir", type=str, default="/workspace/rkd_cifar10_1111/imagenet1k_export/gray3/val_256cc")
+    p.add_argument("--output_dir", type=str, default=f"{DATE}_kd_sd_gray-imagenet/one-inv-eval-{RKD_METRIC}-B{BATCH_SIZE}-LR{LR}-RKD{RKD_W}-INV{INV_W}-INVINV{INVINV_W}-FD{FD_W}_class{CLASS_PCT}pct_per{N_IMAGES}")
 
     # metric
     p.add_argument("--rkd_metric", type=str, default=RKD_METRIC, choices=["pixel", "inception", "clip", "dinov3"])
@@ -1193,12 +1195,12 @@ def build_argparser():
     # device
     p.add_argument("--device", type=str, default=f"cuda:{CUDA_NUM}")
     p.add_argument("--project", type=str, default=f"{DATE}_rkd-feature-sd15")
-    p.add_argument("--run_name", type=str, default=f"student-lora-sd15-gray-imagenet-one-inv-eval-{RKD_METRIC}-B{BATCH_SIZE}-LR{LR}-RKD{RKD_W}-INV{INV_W}-INVINV{INVINV_W}-FD{FD_W}-N{N_IMAGES}")
+    p.add_argument("--run_name", type=str, default=f"student-lora-sd15-gray-imagenet-one-inv-eval-{RKD_METRIC}-B{BATCH_SIZE}-LR{LR}-RKD{RKD_W}-INV{INV_W}-INVINV{INVINV_W}-FD{FD_W}_class{CLASS_PCT}pct_per{N_IMAGES}")
     p.add_argument("--wandb_offline", action="store_true")
     p.add_argument("--mixed_precision", type=str, default="bf16", choices=["no", "fp16", "bf16"])
 
     # image
-    p.add_argument("--image_size", type=int, default=512)
+    p.add_argument("--image_size", type=int, default=256)
     p.add_argument("--center_crop", action="store_true")
     p.add_argument("--no_hflip", action="store_true")
     p.add_argument("--num_workers", type=int, default=8)
@@ -1212,8 +1214,8 @@ def build_argparser():
     p.add_argument("--seed", type=int, default=42)
 
     # ddim
-    p.add_argument("--ddim_steps_min", type=int, default=9)
-    p.add_argument("--ddim_steps_max", type=int, default=11)
+    p.add_argument("--ddim_steps_min", type=int, default=17)
+    p.add_argument("--ddim_steps_max", type=int, default=23)
     p.add_argument("--ddim_eta", type=float, default=0.0)
 
     # LoRA
@@ -1230,17 +1232,17 @@ def build_argparser():
     p.add_argument("--fid_eps", type=float, default=1e-8)
 
     # logging / eval
-    p.add_argument("--log_interval", type=int, default=1)
-    p.add_argument("--save_interval", type=int, default=4000)
-    p.add_argument("--sample_interval", type=int, default=4000)
+    p.add_argument("--log_interval", type=int, default=10)
+    p.add_argument("--save_interval", type=int, default=2000)
+    p.add_argument("--sample_interval", type=int, default=2000)
     p.add_argument("--sample_n", type=int, default=25)
-    p.add_argument("--sample_steps", type=int, default=10)
+    p.add_argument("--sample_steps", type=int, default=20)
     p.add_argument("--sample_eta", type=float, default=0.0)
 
     # fid
     p.add_argument("--disable_fid", action="store_true")
-    p.add_argument("--fid_batch_size", type=int, default=16)
-    p.add_argument("--fid_gen_batch", type=int, default=16)
+    p.add_argument("--fid_batch_size", type=int, default=128)
+    p.add_argument("--fid_gen_batch", type=int, default=128)
     p.add_argument("--fid_dims", type=int, default=2048)
     p.add_argument("--fid_keep_gen", action="store_true")
     p.add_argument("--fid_num_samples", type=int, default=0)
